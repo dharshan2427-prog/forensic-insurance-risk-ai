@@ -13,14 +13,13 @@ st.set_page_config(
 )
 
 # --------------------------------------------------
-# LOAD MACHINE LEARNING MODEL
+# LOAD TRAINED ML MODEL
 # --------------------------------------------------
 
 @st.cache_resource
 def load_model():
     with open("insurance_risk_model_v3b.pkl", "rb") as file:
-        model = pickle.load(file)
-    return model
+        return pickle.load(file)
 
 try:
     model = load_model()
@@ -34,13 +33,14 @@ except Exception as e:
 # --------------------------------------------------
 
 st.title("🔍 Forensic Insurance Risk Assessment")
+
 st.write(
     "AI-powered prototype for preliminary insurance claim risk assessment."
 )
 
 st.info(
-    "This prototype provides a machine-learning-based risk classification "
-    "and is not a final fraud determination."
+    "This system provides a machine-learning-based preliminary risk "
+    "classification. It is not a final fraud determination."
 )
 
 # --------------------------------------------------
@@ -52,6 +52,7 @@ st.header("📋 Claim Information")
 col1, col2 = st.columns(2)
 
 with col1:
+
     claim_id = st.text_input(
         "Claim ID",
         value="FIR-004"
@@ -78,6 +79,7 @@ with col1:
     )
 
 with col2:
+
     rejected_claims = st.number_input(
         "Number of Rejected Claims",
         min_value=0,
@@ -121,14 +123,14 @@ with col2:
     )
 
 # --------------------------------------------------
-# PREDICTION
+# ASSESS RISK
 # --------------------------------------------------
 
 st.divider()
 
 if st.button("🔍 Assess Risk", use_container_width=True):
 
-    # Features must match the Version 3B training model
+    # These MUST match the features used during Version 3B training
     input_data = pd.DataFrame({
         "claim_amount": [claim_amount],
         "previous_claims": [previous_claims],
@@ -139,73 +141,101 @@ if st.button("🔍 Assess Risk", use_container_width=True):
         "claim_after_policy": [claim_after_policy]
     })
 
+    # --------------------------------------------------
+    # ML PREDICTION
+    # --------------------------------------------------
+
     try:
+
         prediction = model.predict(input_data)[0]
 
-        # Get probability if the model supports it
-        try:
+        risk = str(prediction).upper()
+
+        # Get prediction probabilities
+        probabilities = None
+        confidence = None
+
+        if hasattr(model, "predict_proba"):
+
             probabilities = model.predict_proba(input_data)[0]
             classes = model.classes_
+
+            confidence = max(probabilities) * 100
 
             probability_dict = {
                 str(classes[i]): float(probabilities[i])
                 for i in range(len(classes))
             }
 
-            confidence = max(probabilities) * 100
+        else:
 
-        except Exception:
             probability_dict = {}
-            confidence = None
 
         # --------------------------------------------------
-        # RESULT
+        # RISK RESULT
         # --------------------------------------------------
 
         st.header("📊 Risk Assessment")
 
-        risk = str(prediction).upper()
-
         if risk == "HIGH":
+
             st.error("🔴 HIGH RISK")
+
         elif risk == "MEDIUM":
+
             st.warning("🟡 MEDIUM RISK")
-        else:
+
+        elif risk == "LOW":
+
             st.success("🟢 LOW RISK")
+
+        else:
+
+            st.info(f"Predicted Risk: {risk}")
 
         # --------------------------------------------------
         # CLAIM SUMMARY
         # --------------------------------------------------
 
-        st.subheader("Claim Summary")
+        st.subheader("📋 Claim Summary")
 
-        summary_col1, summary_col2, summary_col3 = st.columns(3)
+        c1, c2, c3 = st.columns(3)
 
-        with summary_col1:
+        with c1:
             st.metric("Claim ID", claim_id)
 
-        with summary_col2:
+        with c2:
             st.metric("Claim Type", claim_type)
 
-        with summary_col3:
-            st.metric("Claim Amount", f"₹{claim_amount:,.2f}")
+        with c3:
+            st.metric(
+                "Claim Amount",
+                f"₹{claim_amount:,.2f}"
+            )
 
         # --------------------------------------------------
-        # CONFIDENCE
+        # MODEL CONFIDENCE
         # --------------------------------------------------
 
         if confidence is not None:
+
             st.subheader("🤖 Model Confidence")
-            st.progress(int(confidence))
-            st.write(f"Prediction confidence: **{confidence:.2f}%**")
+
+            st.progress(
+                min(int(confidence), 100)
+            )
+
+            st.write(
+                f"Prediction confidence: **{confidence:.2f}%**"
+            )
 
         # --------------------------------------------------
-        # RISK PROBABILITIES
+        # RISK PROBABILITY
         # --------------------------------------------------
 
         if probability_dict:
 
-            st.subheader("Risk Probability")
+            st.subheader("📈 Risk Probability")
 
             probability_data = pd.DataFrame({
                 "Risk Level": list(probability_dict.keys()),
@@ -222,10 +252,10 @@ if st.button("🔍 Assess Risk", use_container_width=True):
             )
 
         # --------------------------------------------------
-        # RISK FACTORS
+        # RISK INDICATORS
         # --------------------------------------------------
 
-        st.subheader("🔎 Claim Risk Indicators")
+        st.subheader("🔎 Risk Indicators")
 
         factors = []
 
@@ -236,7 +266,7 @@ if st.button("🔍 Assess Risk", use_container_width=True):
             factors.append("High number of previous claims")
 
         if rejected_claims >= 2:
-            factors.append("Previous rejected claims present")
+            factors.append("Previous rejected claims")
 
         if claim_frequency == 1:
             factors.append("High claim frequency")
@@ -248,13 +278,21 @@ if st.button("🔍 Assess Risk", use_container_width=True):
             factors.append("Document inconsistency")
 
         if claim_after_policy <= 30:
-            factors.append("Claim submitted shortly after policy started")
+            factors.append(
+                "Claim submitted shortly after policy started"
+            )
 
         if factors:
+
             for factor in factors:
                 st.write("• " + factor)
+
         else:
-            st.write("No major risk indicators identified from the entered information.")
+
+            st.write(
+                "No major risk indicators identified from the "
+                "entered information."
+            )
 
         # --------------------------------------------------
         # RECOMMENDATION
@@ -263,35 +301,49 @@ if st.button("🔍 Assess Risk", use_container_width=True):
         st.subheader("📌 Preliminary Recommendation")
 
         if risk == "HIGH":
+
             st.error(
                 "Recommend detailed investigation and verification "
                 "before claim settlement."
             )
 
         elif risk == "MEDIUM":
+
             st.warning(
-                "Recommend additional document and evidence verification "
-                "before final decision."
+                "Recommend additional document and evidence "
+                "verification before final decision."
             )
 
         else:
+
             st.success(
-                "Claim shows lower predicted risk based on the available "
-                "input features. Normal verification procedures should "
-                "still be followed."
+                "Claim shows lower predicted risk based on the "
+                "available information. Normal verification "
+                "procedures should still be followed."
             )
 
         # --------------------------------------------------
-        # TECHNICAL INFORMATION
+        # MODEL INPUT
         # --------------------------------------------------
 
-        with st.expander("View ML Model Input"):
+        with st.expander("🔧 View ML Model Input"):
 
             st.dataframe(
                 input_data,
                 use_container_width=True,
                 hide_index=True
             )
+
+    except Exception as e:
+
+        st.error("⚠️ Prediction error")
+
+        st.write(
+            "The application could not generate a prediction "
+            "from the trained model."
+        )
+
+        st.code(str(e))
 
 # --------------------------------------------------
 # FOOTER
@@ -300,5 +352,5 @@ if st.button("🔍 Assess Risk", use_container_width=True):
 st.divider()
 
 st.caption(
-    "Forensic Insurance Risk Assessment – Version 4 ML Prototype"
+    "Forensic Insurance Risk Assessment — Version 4 ML Prototype"
 )
