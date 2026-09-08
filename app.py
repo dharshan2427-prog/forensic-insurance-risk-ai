@@ -18,7 +18,7 @@ st.set_page_config(
 
 @st.cache_resource
 def load_model():
-    with open("insurance_risk_model_v3b.pkl", "rb") as file:
+    with open("insurance_risk_model_v4.pkl", "rb") as file:
         return pickle.load(file)
 
 try:
