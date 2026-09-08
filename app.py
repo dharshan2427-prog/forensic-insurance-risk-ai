@@ -1,356 +1,433 @@
 import streamlit as st
+import joblib
 import pandas as pd
-import pickle
+import os
 
-# --------------------------------------------------
+# ============================================================
 # PAGE CONFIGURATION
-# --------------------------------------------------
+# ============================================================
 
 st.set_page_config(
     page_title="Forensic Insurance Risk Assessment",
-    page_icon="🔍",
+    page_icon="🛡️",
     layout="wide"
 )
 
-# --------------------------------------------------
-# LOAD TRAINED ML MODEL
-# --------------------------------------------------
-
-@st.cache_resource
-def load_model():
-    with open("insurance_risk_model_v4.pkl", "rb") as file:
-        return pickle.load(file)
-
-try:
-    model = load_model()
-except Exception as e:
-    st.error("Unable to load the trained ML model.")
-    st.error(str(e))
-    st.stop()
-
-# --------------------------------------------------
+# ============================================================
 # TITLE
-# --------------------------------------------------
+# ============================================================
 
-st.title("🔍 Forensic Insurance Risk Assessment")
-
-st.write(
-    "AI-powered prototype for preliminary insurance claim risk assessment."
+st.title("🛡️ Forensic Insurance Risk Assessment")
+st.markdown(
+    "### AI-Based Insurance Claim Risk Classification"
 )
 
 st.info(
-    "This system provides a machine-learning-based preliminary risk "
-    "classification. It is not a final fraud determination."
+    "Enter the claim details below. The trained Version 4 "
+    "Random Forest model will classify the claim risk."
 )
 
-# --------------------------------------------------
-# CLAIM INFORMATION
-# --------------------------------------------------
+# ============================================================
+# LOAD VERSION 4 MODEL
+# ============================================================
 
-st.header("📋 Claim Information")
+MODEL_FILE = "insurance_risk_model_v4.pkl"
+
+
+@st.cache_resource
+def load_model():
+    if not os.path.exists(MODEL_FILE):
+        raise FileNotFoundError(
+            f"{MODEL_FILE} was not found in the application folder."
+        )
+
+    data = joblib.load(MODEL_FILE)
+
+    # V4 model is stored as a dictionary
+    if not isinstance(data, dict):
+        raise TypeError(
+            "The V4 model file does not contain the expected dictionary."
+        )
+
+    required_keys = ["model", "label_encoder", "features"]
+
+    for key in required_keys:
+        if key not in data:
+            raise KeyError(
+                f"Required key '{key}' is missing from the V4 model."
+            )
+
+    model = data["model"]
+    label_encoder = data["label_encoder"]
+    features = data["features"]
+
+    return model, label_encoder, features
+
+
+# ============================================================
+# MODEL INITIALIZATION
+# ============================================================
+
+try:
+    model, label_encoder, features = load_model()
+
+    st.success("✅ Version 4 ML model loaded successfully!")
+
+except Exception as e:
+    st.error("❌ Unable to load the trained ML model.")
+    st.error(str(e))
+    st.stop()
+
+
+# ============================================================
+# DISPLAY MODEL INFORMATION
+# ============================================================
+
+with st.expander("🔍 Model Information"):
+    st.write("**Model:** Random Forest Classifier")
+    st.write("**Version:** 4")
+    st.write("**Features used by model:**")
+
+    for feature in features:
+        st.write(f"- {feature}")
+
+
+# ============================================================
+# INPUT SECTION
+# ============================================================
+
+st.header("📋 Insurance Claim Details")
 
 col1, col2 = st.columns(2)
 
 with col1:
 
-    claim_id = st.text_input(
-        "Claim ID",
-        value="FIR-004"
-    )
-
-    claim_type = st.selectbox(
-        "Claim Type",
-        ["Vehicle", "Property", "Health", "Fire", "Other"]
-    )
-
     claim_amount = st.number_input(
-        "Claim Amount (₹)",
+        "Claim Amount",
         min_value=0.0,
-        value=300000.0,
-        step=10000.0
+        value=50000.0,
+        step=1000.0
     )
 
     previous_claims = st.number_input(
-        "Number of Previous Claims",
+        "Previous Claims",
         min_value=0,
-        max_value=50,
-        value=2,
-        step=1
-    )
-
-with col2:
-
-    rejected_claims = st.number_input(
-        "Number of Rejected Claims",
-        min_value=0,
-        max_value=50,
         value=0,
         step=1
     )
 
-    claim_frequency = st.selectbox(
-        "High Claim Frequency?",
-        [0, 1],
-        format_func=lambda x: "Yes" if x == 1 else "No"
+    rejected_claims = st.number_input(
+        "Rejected Claims",
+        min_value=0,
+        value=0,
+        step=1
     )
+
+    claim_frequency = st.number_input(
+        "Claim Frequency",
+        min_value=0.0,
+        value=1.0,
+        step=1.0
+    )
+
+
+with col2:
 
     evidence_status = st.selectbox(
         "Evidence Status",
-        [0, 1, 2],
-        format_func=lambda x: {
-            0: "Incomplete",
-            1: "Complete",
-            2: "Strong"
-        }[x]
+        options=["No", "Yes"]
     )
 
     document_consistency = st.selectbox(
         "Document Consistency",
-        [0, 1, 2],
-        format_func=lambda x: {
-            0: "Inconsistent",
-            1: "Partially Consistent",
-            2: "Consistent"
-        }[x]
+        options=["No", "Yes"]
     )
 
-    claim_after_policy = st.number_input(
-        "Days After Policy Started",
-        min_value=0,
-        max_value=3650,
-        value=30,
-        step=1
+    claim_after_policy = st.selectbox(
+        "Claim After Policy",
+        options=["No", "Yes"]
     )
 
-# --------------------------------------------------
-# ASSESS RISK
-# --------------------------------------------------
 
-st.divider()
+# ============================================================
+# CONVERT YES / NO TO NUMERIC
+# ============================================================
 
-if st.button("🔍 Assess Risk", use_container_width=True):
+evidence_status_value = 1 if evidence_status == "Yes" else 0
 
-    # These MUST match the features used during Version 3B training
-    input_data = pd.DataFrame({
-        "claim_amount": [claim_amount],
-        "previous_claims": [previous_claims],
-        "rejected_claims": [rejected_claims],
-        "claim_frequency": [claim_frequency],
-        "evidence_status": [evidence_status],
-        "document_consistency": [document_consistency],
-        "claim_after_policy": [claim_after_policy]
-    })
+document_consistency_value = (
+    1 if document_consistency == "Yes" else 0
+)
 
-    # --------------------------------------------------
-    # ML PREDICTION
-    # --------------------------------------------------
+claim_after_policy_value = (
+    1 if claim_after_policy == "Yes" else 0
+)
+
+
+# ============================================================
+# CREATE INPUT DATA
+# ============================================================
+
+input_values = {
+    "claim_amount": claim_amount,
+    "previous_claims": previous_claims,
+    "rejected_claims": rejected_claims,
+    "claim_frequency": claim_frequency,
+    "evidence_status": evidence_status_value,
+    "document_consistency": document_consistency_value,
+    "claim_after_policy": claim_after_policy_value
+}
+
+
+# ============================================================
+# PREPARE DATA ACCORDING TO TRAINED FEATURE ORDER
+# ============================================================
+
+try:
+
+    # Make sure the exact feature order used during training
+    # is maintained.
+
+    input_data = pd.DataFrame(
+        [[input_values[feature] for feature in features]],
+        columns=features
+    )
+
+except KeyError as e:
+
+    st.error(
+        f"❌ Feature mismatch: {e}"
+    )
+
+    st.write(
+        "Features stored in model:",
+        features
+    )
+
+    st.stop()
+
+
+# ============================================================
+# SHOW INPUT DATA
+# ============================================================
+
+with st.expander("📊 View Model Input Data"):
+
+    st.dataframe(
+        input_data,
+        use_container_width=True
+    )
+
+
+# ============================================================
+# PREDICTION BUTTON
+# ============================================================
+
+st.markdown("---")
+
+predict_button = st.button(
+    "🔎 Assess Insurance Risk",
+    type="primary",
+    use_container_width=True
+)
+
+
+# ============================================================
+# PREDICTION
+# ============================================================
+
+if predict_button:
 
     try:
 
-        prediction = model.predict(input_data)[0]
+        # ----------------------------------------------------
+        # MAKE PREDICTION
+        # ----------------------------------------------------
 
-        risk = str(prediction).upper()
+        prediction = model.predict(input_data)
 
-        # Get prediction probabilities
-        probabilities = None
-        confidence = None
+        # Convert encoded prediction back to original label
+        risk_level = label_encoder.inverse_transform(
+            prediction
+        )[0]
+
+        # ----------------------------------------------------
+        # DISPLAY RESULT
+        # ----------------------------------------------------
+
+        st.markdown("---")
+
+        st.header("📌 Risk Assessment Result")
+
+        result_col1, result_col2 = st.columns(2)
+
+        with result_col1:
+
+            st.metric(
+                "Predicted Risk Level",
+                str(risk_level).upper()
+            )
+
+        # ----------------------------------------------------
+        # PROBABILITY
+        # ----------------------------------------------------
+
+        with result_col2:
+
+            if hasattr(model, "predict_proba"):
+
+                probabilities = model.predict_proba(
+                    input_data
+                )[0]
+
+                classes = model.classes_
+
+                # Find probability corresponding to prediction
+                predicted_class = prediction[0]
+
+                probability = 0.0
+
+                for i, class_value in enumerate(classes):
+
+                    if class_value == predicted_class:
+                        probability = probabilities[i] * 100
+                        break
+
+                st.metric(
+                    "Prediction Confidence",
+                    f"{probability:.2f}%"
+                )
+
+        # ----------------------------------------------------
+        # RISK INTERPRETATION
+        # ----------------------------------------------------
+
+        risk_text = str(risk_level).lower()
+
+        if "high" in risk_text:
+
+            st.error(
+                "🚨 HIGH RISK CLAIM\n\n"
+                "The claim shows characteristics associated "
+                "with a higher insurance risk level. "
+                "Further investigation and verification "
+                "may be recommended."
+            )
+
+        elif "medium" in risk_text:
+
+            st.warning(
+                "⚠️ MEDIUM RISK CLAIM\n\n"
+                "The claim shows characteristics associated "
+                "with moderate insurance risk. "
+                "Additional verification may be appropriate."
+            )
+
+        elif "low" in risk_text:
+
+            st.success(
+                "✅ LOW RISK CLAIM\n\n"
+                "The claim shows characteristics associated "
+                "with a lower insurance risk level."
+            )
+
+        else:
+
+            st.info(
+                f"Predicted risk category: {risk_level}"
+            )
+
+
+        # ====================================================
+        # PROBABILITY BREAKDOWN
+        # ====================================================
 
         if hasattr(model, "predict_proba"):
 
-            probabilities = model.predict_proba(input_data)[0]
-            classes = model.classes_
+            st.subheader("📈 Risk Probability Breakdown")
 
-            confidence = max(probabilities) * 100
+            probability_data = []
 
-            probability_dict = {
-                str(classes[i]): float(probabilities[i])
-                for i in range(len(classes))
-            }
+            for i, class_value in enumerate(classes):
 
-        else:
+                probability_data.append({
+                    "Risk Category": str(
+                        label_encoder.inverse_transform(
+                            [class_value]
+                        )[0]
+                    ),
+                    "Probability (%)": round(
+                        probabilities[i] * 100,
+                        2
+                    )
+                })
 
-            probability_dict = {}
-
-        # --------------------------------------------------
-        # RISK RESULT
-        # --------------------------------------------------
-
-        st.header("📊 Risk Assessment")
-
-        if risk == "HIGH":
-
-            st.error("🔴 HIGH RISK")
-
-        elif risk == "MEDIUM":
-
-            st.warning("🟡 MEDIUM RISK")
-
-        elif risk == "LOW":
-
-            st.success("🟢 LOW RISK")
-
-        else:
-
-            st.info(f"Predicted Risk: {risk}")
-
-        # --------------------------------------------------
-        # CLAIM SUMMARY
-        # --------------------------------------------------
-
-        st.subheader("📋 Claim Summary")
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            st.metric("Claim ID", claim_id)
-
-        with c2:
-            st.metric("Claim Type", claim_type)
-
-        with c3:
-            st.metric(
-                "Claim Amount",
-                f"₹{claim_amount:,.2f}"
+            probability_df = pd.DataFrame(
+                probability_data
             )
 
-        # --------------------------------------------------
-        # MODEL CONFIDENCE
-        # --------------------------------------------------
-
-        if confidence is not None:
-
-            st.subheader("🤖 Model Confidence")
-
-            st.progress(
-                min(int(confidence), 100)
+            st.dataframe(
+                probability_df,
+                use_container_width=True,
+                hide_index=True
             )
 
-            st.write(
-                f"Prediction confidence: **{confidence:.2f}%**"
+            st.bar_chart(
+                probability_df.set_index(
+                    "Risk Category"
+                )
             )
 
-        # --------------------------------------------------
-        # RISK PROBABILITY
-        # --------------------------------------------------
 
-        if probability_dict:
+        # ====================================================
+        # FEATURE IMPORTANCE
+        # ====================================================
 
-            st.subheader("📈 Risk Probability")
+        if hasattr(model, "feature_importances_"):
 
-            probability_data = pd.DataFrame({
-                "Risk Level": list(probability_dict.keys()),
-                "Probability (%)": [
-                    value * 100
-                    for value in probability_dict.values()
-                ]
+            st.subheader("📊 Feature Importance")
+
+            importance_df = pd.DataFrame({
+                "Feature": features,
+                "Importance": model.feature_importances_
             })
 
+            importance_df = importance_df.sort_values(
+                by="Importance",
+                ascending=False
+            )
+
+            importance_df["Importance"] = (
+                importance_df["Importance"].round(4)
+            )
+
             st.dataframe(
-                probability_data,
+                importance_df,
                 use_container_width=True,
                 hide_index=True
             )
 
-        # --------------------------------------------------
-        # RISK INDICATORS
-        # --------------------------------------------------
-
-        st.subheader("🔎 Risk Indicators")
-
-        factors = []
-
-        if claim_amount >= 500000:
-            factors.append("High claim amount")
-
-        if previous_claims >= 5:
-            factors.append("High number of previous claims")
-
-        if rejected_claims >= 2:
-            factors.append("Previous rejected claims")
-
-        if claim_frequency == 1:
-            factors.append("High claim frequency")
-
-        if evidence_status == 0:
-            factors.append("Incomplete evidence")
-
-        if document_consistency == 0:
-            factors.append("Document inconsistency")
-
-        if claim_after_policy <= 30:
-            factors.append(
-                "Claim submitted shortly after policy started"
+            st.bar_chart(
+                importance_df.set_index("Feature")
             )
 
-        if factors:
-
-            for factor in factors:
-                st.write("• " + factor)
-
-        else:
-
-            st.write(
-                "No major risk indicators identified from the "
-                "entered information."
-            )
-
-        # --------------------------------------------------
-        # RECOMMENDATION
-        # --------------------------------------------------
-
-        st.subheader("📌 Preliminary Recommendation")
-
-        if risk == "HIGH":
-
-            st.error(
-                "Recommend detailed investigation and verification "
-                "before claim settlement."
-            )
-
-        elif risk == "MEDIUM":
-
-            st.warning(
-                "Recommend additional document and evidence "
-                "verification before final decision."
-            )
-
-        else:
-
-            st.success(
-                "Claim shows lower predicted risk based on the "
-                "available information. Normal verification "
-                "procedures should still be followed."
-            )
-
-        # --------------------------------------------------
-        # MODEL INPUT
-        # --------------------------------------------------
-
-        with st.expander("🔧 View ML Model Input"):
-
-            st.dataframe(
-                input_data,
-                use_container_width=True,
-                hide_index=True
-            )
 
     except Exception as e:
 
-        st.error("⚠️ Prediction error")
-
-        st.write(
-            "The application could not generate a prediction "
-            "from the trained model."
+        st.error(
+            "❌ Prediction failed."
         )
 
-        st.code(str(e))
+        st.exception(e)
 
-# --------------------------------------------------
+
+# ============================================================
 # FOOTER
-# --------------------------------------------------
+# ============================================================
 
-st.divider()
+st.markdown("---")
 
 st.caption(
-    "Forensic Insurance Risk Assessment — Version 4 ML Prototype"
+    "Forensic Insurance Risk AI • Version 4 • "
+    "Random Forest Classification"
 )
