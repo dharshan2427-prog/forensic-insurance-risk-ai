@@ -144,6 +144,30 @@ if "auth_mode" not in st.session_state:
 
 
 # ============================================================
+# OWNER / ADMIN ACCESS CONFIGURATION
+# ============================================================
+
+def get_owner_access_key():
+    """Read the owner key from Streamlit secrets or environment.
+
+    For a prototype/demo, a fallback key is provided so the owner can
+    access the app without creating an email account first. For deployment,
+    set INSURIX_OWNER_KEY in Streamlit Secrets.
+    """
+    try:
+        secret_key = st.secrets.get("INSURIX_OWNER_KEY", "")
+        if secret_key:
+            return str(secret_key)
+    except Exception:
+        pass
+
+    return os.environ.get("INSURIX_OWNER_KEY", "INSURIX-OWNER-2026")
+
+
+OWNER_ACCESS_KEY = get_owner_access_key()
+
+
+# ============================================================
 # AUTHENTICATION SCREEN
 # ============================================================
 
@@ -161,7 +185,7 @@ if not st.session_state.authenticated:
         }
         .auth-card {
             width: 100%;
-            max-width: 1040px;
+            max-width: 1080px;
             background: #ffffff;
             border: 1px solid #e1e9f4;
             border-radius: 28px;
@@ -172,7 +196,7 @@ if not st.session_state.authenticated:
             background: linear-gradient(145deg, #061b3d, #0b3d78);
             color: #ffffff;
             padding: 54px 46px;
-            min-height: 560px;
+            min-height: 610px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -199,7 +223,7 @@ if not st.session_state.authenticated:
             color: #cbd9ec;
             font-size: 16px;
             line-height: 1.6;
-            max-width: 420px;
+            max-width: 430px;
         }
         .auth-feature {
             color: #e8f2ff;
@@ -215,6 +239,24 @@ if not st.session_state.authenticated:
         .auth-form-copy {
             color: #718096;
             margin-bottom: 22px;
+        }
+        .owner-access-card {
+            background: #f4f8ff;
+            border: 1px solid #d9e6f7;
+            border-radius: 16px;
+            padding: 16px 18px;
+            margin-top: 20px;
+        }
+        .owner-access-title {
+            color: #12325f;
+            font-size: 14px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+        .owner-access-copy {
+            color: #6d7c91;
+            font-size: 12px;
+            line-height: 1.5;
         }
         .auth-footer {
             text-align: center;
@@ -251,6 +293,7 @@ if not st.session_state.authenticated:
                     <div class="auth-feature">✓ AI-assisted risk classification</div>
                     <div class="auth-feature">✓ Claim document intelligence</div>
                     <div class="auth-feature">✓ Evidence-focused workflow</div>
+                    <div class="auth-feature">✓ Role-based workspace access</div>
                 </div>
                 <div style="color:#9fb7d5;font-size:12px;">INSURIX • VERSION 4 • RANDOM FOREST</div>
             </div>
@@ -261,6 +304,9 @@ if not st.session_state.authenticated:
     with right:
         st.markdown('<div style="padding:54px 48px 38px 20px;">', unsafe_allow_html=True)
 
+        # --------------------------------------------------------
+        # NORMAL USER LOGIN
+        # --------------------------------------------------------
         if st.session_state.auth_mode == "login":
             st.markdown('<div class="auth-form-title">Welcome back</div>', unsafe_allow_html=True)
             st.markdown('<div class="auth-form-copy">Sign in to access your Insurix workspace.</div>', unsafe_allow_html=True)
@@ -286,11 +332,74 @@ if not st.session_state.authenticated:
                         st.error("Incorrect email or password.")
 
             st.write("")
-            st.markdown("Don't have an account?")
+            if st.button("👑 Owner / Admin Access", use_container_width=True, key="go_owner"):
+                st.session_state.auth_mode = "owner"
+                st.rerun()
+
             if st.button("Create a new account", use_container_width=True, key="go_create"):
                 st.session_state.auth_mode = "create"
                 st.rerun()
 
+        # --------------------------------------------------------
+        # OWNER / ADMIN ACCESS
+        # --------------------------------------------------------
+        elif st.session_state.auth_mode == "owner":
+            st.markdown('<div class="auth-form-title">Owner / Admin Access</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="auth-form-copy">Access the Insurix administrative workspace without using a user email.</div>',
+                unsafe_allow_html=True
+            )
+
+            st.markdown(
+                """
+                <div class="owner-access-card">
+                    <div class="owner-access-title">👑 Platform Owner</div>
+                    <div class="owner-access-copy">
+                        This access is reserved for the Insurix owner or administrator.
+                        Use your private owner access key to enter the platform.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            with st.form("owner_login_form"):
+                owner_key_input = st.text_input(
+                    "Owner access key",
+                    type="password",
+                    placeholder="Enter owner access key"
+                )
+                owner_submit = st.form_submit_button(
+                    "Enter Owner Workspace  →",
+                    use_container_width=True
+                )
+
+            if owner_submit:
+                if owner_key_input and hmac.compare_digest(owner_key_input, OWNER_ACCESS_KEY):
+                    st.session_state.authenticated = True
+                    st.session_state.current_user = {
+                        "id": 0,
+                        "full_name": "Insurix Owner",
+                        "email": "owner@insurix.local",
+                        "organization": "Insurix",
+                        "role": "Administrator"
+                    }
+                    st.session_state.page = "Overview"
+                    st.session_state.remember_me = False
+                    st.rerun()
+                else:
+                    st.error("Invalid owner access key.")
+
+            st.info("For deployment, store INSURIX_OWNER_KEY in Streamlit Secrets instead of using the demo fallback key.")
+
+            st.write("")
+            if st.button("← Back to sign in", use_container_width=True, key="owner_back"):
+                st.session_state.auth_mode = "login"
+                st.rerun()
+
+        # --------------------------------------------------------
+        # CREATE NORMAL USER ACCOUNT
+        # --------------------------------------------------------
         else:
             st.markdown('<div class="auth-form-title">Create your account</div>', unsafe_allow_html=True)
             st.markdown('<div class="auth-form-copy">Set up your secure Insurix workspace.</div>', unsafe_allow_html=True)
@@ -301,7 +410,7 @@ if not st.session_state.authenticated:
                 create_org = st.text_input("Organization", placeholder="Company / Agency / Institution")
                 create_role = st.selectbox(
                     "Role",
-                    ["Claims Analyst", "Forensic Investigator", "Insurance Manager", "Administrator"]
+                    ["Claims Analyst", "Forensic Investigator", "Insurance Manager"]
                 )
                 create_password = st.text_input("Password", type="password", placeholder="At least 8 characters")
                 create_confirm = st.text_input("Confirm password", type="password", placeholder="Re-enter your password")
@@ -333,12 +442,16 @@ if not st.session_state.authenticated:
                         st.error(message)
 
             st.write("")
+            if st.button("👑 Owner / Admin Access", use_container_width=True, key="create_owner"):
+                st.session_state.auth_mode = "owner"
+                st.rerun()
+
             if st.button("← Back to sign in", use_container_width=True, key="go_login"):
                 st.session_state.auth_mode = "login"
                 st.rerun()
 
         st.markdown(
-            '<div class="auth-footer">Your account gives you access to the Insurix assessment workspace.</div>',
+            '<div class="auth-footer">Protected Insurix workspace • Preliminary AI-assisted risk assessment</div>',
             unsafe_allow_html=True
         )
         st.markdown('</div>', unsafe_allow_html=True)
