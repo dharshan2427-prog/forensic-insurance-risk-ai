@@ -1221,7 +1221,7 @@ if st.session_state.page == "Overview":
 
     st.caption("INSURIX / 01")
 
-    st.title("Overview")
+    st.title("Insurix")
 
     st.write(
         "Smarter insurance. Stronger evidence."
@@ -1464,7 +1464,7 @@ elif st.session_state.page == "Claim Assessment":
 
         policyholder_name = st.text_input(
             "Policyholder name",
-            placeholder="Enter policyholder name"
+            placeholder="Enter Policyholder name"
         )
 
         incident_location = st.text_input(
