@@ -4,6 +4,9 @@ import pandas as pd
 import os
 import re
 import textwrap
+import sqlite3
+import hashlib
+import hmac
 
 from pypdf import PdfReader
 from docx import Document
@@ -20,6 +23,328 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+
+# ============================================================
+# INSURIX ACCOUNT AUTHENTICATION
+# ============================================================
+
+USER_DB = "insurix_users.db"
+
+
+def init_user_database():
+    """Create the local prototype account database if needed."""
+    connection = sqlite3.connect(USER_DB)
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            organization TEXT,
+            role TEXT,
+            password_hash TEXT NOT NULL,
+            password_salt TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+
+def hash_password(password, salt=None):
+    if salt is None:
+        salt = os.urandom(16)
+    elif isinstance(salt, str):
+        salt = bytes.fromhex(salt)
+
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        120000
+    )
+    return password_hash.hex(), salt.hex()
+
+
+def create_user(full_name, email, organization, role, password):
+    password_hash, password_salt = hash_password(password)
+    try:
+        connection = sqlite3.connect(USER_DB)
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO users
+            (full_name, email, organization, role, password_hash, password_salt)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                full_name.strip(),
+                email.strip().lower(),
+                organization.strip(),
+                role,
+                password_hash,
+                password_salt
+            )
+        )
+        connection.commit()
+        connection.close()
+        return True, "Account created successfully."
+    except sqlite3.IntegrityError:
+        return False, "An account with this email already exists."
+    except Exception:
+        return False, "Unable to create the account right now."
+
+
+def authenticate_user(email, password):
+    connection = sqlite3.connect(USER_DB)
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT id, full_name, email, organization, role,
+               password_hash, password_salt
+        FROM users
+        WHERE email = ?
+        """,
+        (email.strip().lower(),)
+    )
+    row = cursor.fetchone()
+    connection.close()
+
+    if not row:
+        return None
+
+    user_id, full_name, user_email, organization, role, stored_hash, stored_salt = row
+    candidate_hash, _ = hash_password(password, stored_salt)
+
+    if hmac.compare_digest(candidate_hash, stored_hash):
+        return {
+            "id": user_id,
+            "full_name": full_name,
+            "email": user_email,
+            "organization": organization or "",
+            "role": role or "Claims Analyst"
+        }
+
+    return None
+
+
+init_user_database()
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+if "auth_mode" not in st.session_state:
+    st.session_state.auth_mode = "login"
+
+
+# ============================================================
+# AUTHENTICATION SCREEN
+# ============================================================
+
+if not st.session_state.authenticated:
+
+    st.markdown(
+        """
+        <style>
+        .auth-shell {
+            min-height: 82vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 30px 10px;
+        }
+        .auth-card {
+            width: 100%;
+            max-width: 1040px;
+            background: #ffffff;
+            border: 1px solid #e1e9f4;
+            border-radius: 28px;
+            box-shadow: 0 24px 70px rgba(8, 35, 75, 0.12);
+            overflow: hidden;
+        }
+        .auth-brand {
+            background: linear-gradient(145deg, #061b3d, #0b3d78);
+            color: #ffffff;
+            padding: 54px 46px;
+            min-height: 560px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .auth-logo {
+            font-size: 36px;
+            font-weight: 850;
+            letter-spacing: -1px;
+        }
+        .auth-kicker {
+            color: #75c9ff;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 1.6px;
+            margin-top: 8px;
+        }
+        .auth-heading {
+            font-size: 38px;
+            line-height: 1.08;
+            font-weight: 800;
+            margin: 0 0 16px 0;
+        }
+        .auth-copy {
+            color: #cbd9ec;
+            font-size: 16px;
+            line-height: 1.6;
+            max-width: 420px;
+        }
+        .auth-feature {
+            color: #e8f2ff;
+            margin-top: 22px;
+            font-size: 14px;
+        }
+        .auth-form-title {
+            color: #071b3b;
+            font-size: 30px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+        .auth-form-copy {
+            color: #718096;
+            margin-bottom: 22px;
+        }
+        .auth-footer {
+            text-align: center;
+            color: #8a97aa;
+            font-size: 12px;
+            margin-top: 18px;
+        }
+        div[data-testid="stForm"] {
+            border: 0 !important;
+            padding: 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<div class="auth-shell"><div class="auth-card">', unsafe_allow_html=True)
+    left, right = st.columns([1.05, 1], gap="large")
+
+    with left:
+        st.markdown(
+            """
+            <div class="auth-brand">
+                <div>
+                    <div class="auth-logo">🛡️ INSURIX</div>
+                    <div class="auth-kicker">FORENSIC × INSURANCE</div>
+                </div>
+                <div>
+                    <div class="auth-heading">Smarter insurance.<br>Stronger evidence.</div>
+                    <div class="auth-copy">
+                        A professional workspace for preliminary AI-assisted
+                        claim risk assessment and forensic document intelligence.
+                    </div>
+                    <div class="auth-feature">✓ AI-assisted risk classification</div>
+                    <div class="auth-feature">✓ Claim document intelligence</div>
+                    <div class="auth-feature">✓ Evidence-focused workflow</div>
+                </div>
+                <div style="color:#9fb7d5;font-size:12px;">INSURIX • VERSION 4 • RANDOM FOREST</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with right:
+        st.markdown('<div style="padding:54px 48px 38px 20px;">', unsafe_allow_html=True)
+
+        if st.session_state.auth_mode == "login":
+            st.markdown('<div class="auth-form-title">Welcome back</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-form-copy">Sign in to access your Insurix workspace.</div>', unsafe_allow_html=True)
+
+            with st.form("login_form"):
+                login_email = st.text_input("Work email", placeholder="name@company.com")
+                login_password = st.text_input("Password", type="password", placeholder="Enter your password")
+                remember_me = st.checkbox("Keep me signed in for this session")
+                login_submit = st.form_submit_button("Sign in  →", use_container_width=True)
+
+            if login_submit:
+                if not login_email or not login_password:
+                    st.error("Please enter your email and password.")
+                else:
+                    user = authenticate_user(login_email, login_password)
+                    if user:
+                        st.session_state.authenticated = True
+                        st.session_state.current_user = user
+                        st.session_state.page = "Overview"
+                        st.session_state.remember_me = remember_me
+                        st.rerun()
+                    else:
+                        st.error("Incorrect email or password.")
+
+            st.write("")
+            st.markdown("Don't have an account?")
+            if st.button("Create a new account", use_container_width=True, key="go_create"):
+                st.session_state.auth_mode = "create"
+                st.rerun()
+
+        else:
+            st.markdown('<div class="auth-form-title">Create your account</div>', unsafe_allow_html=True)
+            st.markdown('<div class="auth-form-copy">Set up your secure Insurix workspace.</div>', unsafe_allow_html=True)
+
+            with st.form("create_account_form"):
+                create_name = st.text_input("Full name", placeholder="Your full name")
+                create_email = st.text_input("Work email", placeholder="name@company.com")
+                create_org = st.text_input("Organization", placeholder="Company / Agency / Institution")
+                create_role = st.selectbox(
+                    "Role",
+                    ["Claims Analyst", "Forensic Investigator", "Insurance Manager", "Administrator"]
+                )
+                create_password = st.text_input("Password", type="password", placeholder="At least 8 characters")
+                create_confirm = st.text_input("Confirm password", type="password", placeholder="Re-enter your password")
+                create_submit = st.form_submit_button("Create account  →", use_container_width=True)
+
+            if create_submit:
+                email_ok = bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", create_email.strip()))
+                if not create_name.strip() or not create_email.strip() or not create_org.strip():
+                    st.error("Please complete all required fields.")
+                elif not email_ok:
+                    st.error("Please enter a valid work email address.")
+                elif len(create_password) < 8:
+                    st.error("Password must contain at least 8 characters.")
+                elif create_password != create_confirm:
+                    st.error("Passwords do not match.")
+                else:
+                    created, message = create_user(
+                        create_name,
+                        create_email,
+                        create_org,
+                        create_role,
+                        create_password
+                    )
+                    if created:
+                        st.success(message + " You can now sign in.")
+                        st.session_state.auth_mode = "login"
+                        st.rerun()
+                    else:
+                        st.error(message)
+
+            st.write("")
+            if st.button("← Back to sign in", use_container_width=True, key="go_login"):
+                st.session_state.auth_mode = "login"
+                st.rerun()
+
+        st.markdown(
+            '<div class="auth-footer">Your account gives you access to the Insurix assessment workspace.</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('</div></div>', unsafe_allow_html=True)
+    st.stop()
 
 
 # ============================================================
@@ -743,6 +1068,18 @@ with st.sidebar:
 
     st.divider()
 
+    current_user = st.session_state.current_user or {}
+    st.markdown("### ACCOUNT")
+    st.markdown(f"**{current_user.get('full_name', 'User')}**")
+    st.caption(current_user.get("role", "Claims Analyst"))
+    if st.button("↪ Sign out", use_container_width=True, key="sidebar_logout"):
+        st.session_state.authenticated = False
+        st.session_state.current_user = None
+        st.session_state.auth_mode = "login"
+        st.rerun()
+
+    st.divider()
+
     st.markdown("### SYSTEM")
 
     st.success("System operational")
@@ -771,7 +1108,7 @@ if st.session_state.page == "Overview":
 
     st.caption("INSURIX / 01")
 
-    st.title("INSURIX")
+    st.title("Overview")
 
     st.write(
         "Smarter insurance. Stronger evidence."
@@ -986,7 +1323,7 @@ if st.session_state.page == "Overview":
 elif st.session_state.page == "Claim Assessment":
 
     st.caption(
-        "PUBLIC PORTAL / CLAIM ASSESSMENT"
+        "INSURIX WORKSPACE / CLAIM ASSESSMENT"
     )
 
     st.title("Claim Assessment")
@@ -1014,7 +1351,7 @@ elif st.session_state.page == "Claim Assessment":
 
         policyholder_name = st.text_input(
             "Policyholder name",
-            placeholder="Enter Policyholder name"
+            placeholder="Enter policyholder name"
         )
 
         incident_location = st.text_input(
@@ -2079,7 +2416,7 @@ elif st.session_state.page == "Documents":
 elif st.session_state.page == "Claim Status":
 
     st.caption(
-        "PUBLIC PORTAL / CLAIM STATUS"
+        "INSURIX WORKSPACE / CLAIM STATUS"
     )
 
     st.title("Claim Status")
