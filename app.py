@@ -3,9 +3,10 @@ import joblib
 import pandas as pd
 import os
 
+
 # ============================================================
 # INSURIX | INSURANCE RISK INTELLIGENCE
-# Version 4 - Random Forest Classification
+# VERSION 4 - RANDOM FOREST
 # ============================================================
 
 st.set_page_config(
@@ -15,494 +16,39 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============================================================
-# GLOBAL CSS
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-    /* ---------- GLOBAL ---------- */
-
-    .stApp {
-        background: #f5f9ff;
-    }
-
-    [data-testid="stHeader"] {
-        background: transparent;
-    }
-
-    [data-testid="stToolbar"] {
-        visibility: hidden;
-    }
-
-    .main .block-container {
-        max-width: 1400px;
-        padding-top: 35px;
-        padding-bottom: 40px;
-    }
-
-    /* ---------- SIDEBAR ---------- */
-
-    section[data-testid="stSidebar"] {
-        background:
-            radial-gradient(
-                circle at 20% 80%,
-                rgba(25, 117, 255, 0.35),
-                transparent 35%
-            ),
-            linear-gradient(
-                180deg,
-                #031b4e 0%,
-                #062b73 55%,
-                #0647a5 100%
-            );
-    }
-
-    section[data-testid="stSidebar"] > div {
-        padding: 28px 20px;
-    }
-
-    .brand-title {
-        font-size: 31px;
-        font-weight: 800;
-        color: white;
-        letter-spacing: -1px;
-        margin-bottom: 8px;
-    }
-
-    .brand-title span {
-        color: #35bfff;
-    }
-
-    .brand-subtitle {
-        color: #d7e7ff;
-        font-size: 13px;
-        line-height: 1.55;
-        margin-bottom: 28px;
-    }
-
-    .sidebar-divider {
-        height: 1px;
-        background: rgba(255,255,255,0.22);
-        margin: 18px 0 28px 0;
-    }
-
-    .sidebar-label {
-        color: #a9c7ef;
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 2px;
-        margin-bottom: 12px;
-    }
-
-    .system-box {
-        position: fixed;
-        bottom: 25px;
-        left: 25px;
-        color: #d9e8ff;
-        font-size: 12px;
-        line-height: 1.8;
-    }
-
-    .system-dot {
-        display: inline-block;
-        width: 9px;
-        height: 9px;
-        border-radius: 50%;
-        background: #32e59a;
-        margin-right: 7px;
-    }
-
-    /* ---------- SIDEBAR RADIO ---------- */
-
-    section[data-testid="stSidebar"] .stRadio label {
-        color: #eaf3ff !important;
-        font-size: 14px !important;
-        font-weight: 600 !important;
-    }
-
-    section[data-testid="stSidebar"] .stRadio > div {
-        gap: 8px;
-    }
-
-    section[data-testid="stSidebar"] .stRadio label {
-        padding: 10px 12px;
-        border-radius: 8px;
-    }
-
-    /* ---------- PAGE HEADER ---------- */
-
-    .eyebrow {
-        color: #1769c2;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 2px;
-        margin-bottom: 8px;
-    }
-
-    .page-title {
-        color: #06152f;
-        font-size: 48px;
-        line-height: 1.05;
-        font-weight: 850;
-        letter-spacing: -2px;
-        margin: 0;
-    }
-
-    .page-subtitle {
-        color: #67809e;
-        font-size: 16px;
-        margin-top: 10px;
-        margin-bottom: 26px;
-    }
-
-    /* ---------- HERO ---------- */
-
-    .hero {
-        position: relative;
-        overflow: hidden;
-        min-height: 220px;
-        border-radius: 18px;
-        padding: 38px 48px;
-        margin: 24px 0 24px 0;
-
-        background:
-            radial-gradient(
-                circle at 90% 35%,
-                rgba(0, 186, 255, 0.35),
-                transparent 30%
-            ),
-            linear-gradient(
-                120deg,
-                #061a48 0%,
-                #07347d 55%,
-                #087bd1 100%
-            );
-
-        box-shadow: 0 18px 45px rgba(6, 52, 110, 0.20);
-    }
-
-    .hero-label {
-        color: #c7eaff;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 2px;
-        margin-bottom: 16px;
-    }
-
-    .hero-title {
-        color: white;
-        font-size: 42px;
-        line-height: 1.05;
-        font-weight: 850;
-        letter-spacing: -1.5px;
-    }
-
-    .hero-title span {
-        color: #22c4ff;
-    }
-
-    .hero-text {
-        color: #e4f3ff;
-        font-size: 15px;
-        margin-top: 17px;
-        line-height: 1.5;
-        max-width: 600px;
-    }
-
-    .hero-shield {
-        position: absolute;
-        right: 80px;
-        top: 50px;
-        font-size: 100px;
-        opacity: 0.25;
-    }
-
-    /* ---------- CARDS ---------- */
-
-    .info-card {
-        background: white;
-        border: 1px solid #e0eafa;
-        border-radius: 15px;
-        padding: 25px;
-        min-height: 190px;
-        box-shadow: 0 7px 25px rgba(18, 63, 116, 0.06);
-    }
-
-    .card-number {
-        float: right;
-        color: #3181d4;
-        font-size: 12px;
-        font-weight: 800;
-    }
-
-    .card-icon {
-        width: 52px;
-        height: 52px;
-        border-radius: 50%;
-        background: #e5f3ff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 25px;
-        margin-bottom: 18px;
-    }
-
-    .card-title {
-        color: #071a40;
-        font-size: 21px;
-        font-weight: 800;
-        margin-bottom: 8px;
-    }
-
-    .card-text {
-        color: #6580a1;
-        font-size: 14px;
-        line-height: 1.55;
-    }
-
-    /* ---------- INFO BOX ---------- */
-
-    .ai-box {
-        background: linear-gradient(
-            100deg,
-            #edf7ff,
-            #f7fbff
-        );
-        border: 1px solid #b9ddff;
-        border-left: 5px solid #149de2;
-        border-radius: 12px;
-        padding: 17px 20px;
-        margin-top: 20px;
-        color: #32658f;
-        font-size: 14px;
-        line-height: 1.55;
-    }
-
-    /* ---------- ASSESSMENT ---------- */
-
-    .section-card {
-        background: white;
-        border: 1px solid #e0e8f4;
-        border-radius: 16px;
-        padding: 25px;
-        margin-bottom: 20px;
-        box-shadow: 0 8px 28px rgba(15, 58, 110, 0.05);
-    }
-
-    .section-number {
-        color: #2781cf;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 1.5px;
-    }
-
-    .section-title {
-        color: #091a36;
-        font-size: 22px;
-        font-weight: 800;
-        margin-top: 4px;
-        margin-bottom: 5px;
-    }
-
-    .section-description {
-        color: #7187a2;
-        font-size: 13px;
-    }
-
-    /* ---------- RESULT ---------- */
-
-    .result-card {
-        background: white;
-        border-radius: 16px;
-        border: 1px solid #dce8f5;
-        padding: 24px;
-        text-align: center;
-        box-shadow: 0 8px 25px rgba(20, 70, 120, 0.07);
-    }
-
-    .result-label {
-        color: #6b829d;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 1.3px;
-        text-transform: uppercase;
-    }
-
-    .result-value {
-        color: #071b3e;
-        font-size: 29px;
-        font-weight: 850;
-        margin-top: 8px;
-    }
-
-    .risk-low {
-        color: #15956a;
-    }
-
-    .risk-medium {
-        color: #d68a00;
-    }
-
-    .risk-high {
-        color: #d64242;
-    }
-
-    /* ---------- STATUS ---------- */
-
-    .status-card {
-        background: white;
-        border: 1px solid #dce7f4;
-        border-radius: 15px;
-        padding: 24px;
-        min-height: 150px;
-        box-shadow: 0 8px 25px rgba(15, 58, 110, 0.05);
-    }
-
-    .status-icon {
-        font-size: 27px;
-        margin-bottom: 10px;
-    }
-
-    .status-title {
-        color: #071b3d;
-        font-size: 18px;
-        font-weight: 800;
-    }
-
-    .status-text {
-        color: #7187a0;
-        font-size: 13px;
-        line-height: 1.5;
-        margin-top: 7px;
-    }
-
-    /* ---------- BUTTONS ---------- */
-
-    .stButton > button {
-        background: linear-gradient(
-            90deg,
-            #087fc8,
-            #18aeea
-        );
-        color: white;
-        border: none;
-        border-radius: 9px;
-        padding: 12px 25px;
-        font-weight: 750;
-        min-height: 45px;
-        box-shadow: 0 7px 18px rgba(13, 137, 205, 0.22);
-    }
-
-    .stButton > button:hover {
-        background: linear-gradient(
-            90deg,
-            #066eaf,
-            #0d9ed8
-        );
-        color: white;
-    }
-
-    /* ---------- INPUTS ---------- */
-
-    .stTextInput label,
-    .stNumberInput label,
-    .stSelectbox label,
-    .stDateInput label,
-    .stTextArea label,
-    .stFileUploader label {
-        color: #375676 !important;
-        font-weight: 650 !important;
-        font-size: 13px !important;
-    }
-
-    .stTextInput input,
-    .stNumberInput input,
-    .stTextArea textarea {
-        border-radius: 8px !important;
-        border: 1px solid #d4e2f1 !important;
-        background: #fbfdff !important;
-    }
-
-    /* ---------- FOOTER ---------- */
-
-    .footer {
-        text-align: center;
-        color: #8ba0b9;
-        font-size: 11px;
-        padding: 35px 0 10px 0;
-    }
-
-    /* ---------- MOBILE ---------- */
-
-    @media (max-width: 800px) {
-
-        .page-title {
-            font-size: 36px;
-        }
-
-        .hero-title {
-            font-size: 31px;
-        }
-
-        .hero {
-            padding: 30px;
-        }
-
-        .hero-shield {
-            display: none;
-        }
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 
 # ============================================================
-# MODEL LOADER
+# LOAD VERSION 4 RANDOM FOREST MODEL
 # ============================================================
 
-@st.cache_resource
-def load_model():
+MODEL_FILE = "insurance_risk_model_v4.pkl"
 
-    model_path = "insurance_risk_model_v4.pkl"
-
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(
-            "insurance_risk_model_v4.pkl was not found in the repository."
-        )
-
-    package = joblib.load(model_path)
-
-    model = package["model"]
-    label_encoder = package["label_encoder"]
-    features = package["features"]
-
-    return model, label_encoder, features
-
-
-# ============================================================
-# LOAD VERSION 4 MODEL
-# ============================================================
+if not os.path.exists(MODEL_FILE):
+    st.error(
+        "Version 4 model file was not found. "
+        "Please make sure insurance_risk_model_v4.pkl is in the repository."
+    )
+    st.stop()
 
 try:
+    model_package = joblib.load(MODEL_FILE)
 
-    model, label_encoder, features = load_model()
+    model = model_package["model"]
+    label_encoder = model_package["label_encoder"]
+    features = model_package["features"]
 
 except Exception as e:
-
     st.error("Unable to load the Version 4 Random Forest model.")
-    st.error(str(e))
+    st.code(str(e))
     st.stop()
 
 
 # ============================================================
 # SESSION STATE
 # ============================================================
+
+if "page" not in st.session_state:
+    st.session_state.page = "Overview"
 
 if "last_risk" not in st.session_state:
     st.session_state.last_risk = None
@@ -513,8 +59,97 @@ if "last_confidence" not in st.session_state:
 if "last_probabilities" not in st.session_state:
     st.session_state.last_probabilities = None
 
-if "assessment_completed" not in st.session_state:
-    st.session_state.assessment_completed = False
+if "assessment_done" not in st.session_state:
+    st.session_state.assessment_done = False
+
+
+# ============================================================
+# SIMPLE PROFESSIONAL CSS
+# No HTML UI blocks are used.
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* Main page */
+    .stApp {
+        background-color: #f7f9fc;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #07152f;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: white;
+    }
+
+    /* Main headings */
+    h1 {
+        font-size: 42px !important;
+        font-weight: 800 !important;
+        color: #07152f !important;
+        letter-spacing: -1px;
+    }
+
+    h2 {
+        color: #07152f !important;
+        font-weight: 750 !important;
+    }
+
+    h3 {
+        color: #12325f !important;
+        font-weight: 700 !important;
+    }
+
+    /* Buttons */
+    .stButton > button {
+        background-color: #159bd7;
+        color: white;
+        border: none;
+        border-radius: 9px;
+        padding: 0.65rem 1.2rem;
+        font-weight: 700;
+        min-height: 44px;
+    }
+
+    .stButton > button:hover {
+        background-color: #087fba;
+        color: white;
+        border: none;
+    }
+
+    /* Inputs */
+    .stTextInput input,
+    .stNumberInput input,
+    .stTextArea textarea {
+        border-radius: 8px;
+    }
+
+    /* Cards */
+    div[data-testid="stMetric"] {
+        background-color: white;
+        border: 1px solid #e4eaf2;
+        border-radius: 14px;
+        padding: 18px;
+    }
+
+    /* Info boxes */
+    div[data-testid="stAlert"] {
+        border-radius: 10px;
+    }
+
+    /* Horizontal line */
+    hr {
+        border-color: #e3e8ef;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
@@ -523,914 +158,832 @@ if "assessment_completed" not in st.session_state:
 
 with st.sidebar:
 
-    st.markdown(
-        """
-        <div class="brand-title">
-            🛡️ Insur<span>ix</span>
-        </div>
+    st.markdown("## 🛡️ Insurix")
 
-        <div class="brand-subtitle">
-            AI-Powered Forensic<br>
-            Insurance Risk Assessment
-        </div>
-
-        <div class="sidebar-divider"></div>
-
-        <div class="sidebar-label">
-            NAVIGATION
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.caption(
+        "AI-Powered Forensic\n"
+        "Insurance Risk Assessment"
     )
 
-    page = st.radio(
+    st.divider()
+
+    st.markdown("### NAVIGATION")
+
+    selected_page = st.radio(
         "Navigation",
         [
-            "🏠 Overview",
-            "🔍 Claim Assessment",
-            "📄 Documents",
-            "📊 Claim Status"
+            "Overview",
+            "Claim Assessment",
+            "Documents",
+            "Claim Status"
         ],
+        index=[
+            "Overview",
+            "Claim Assessment",
+            "Documents",
+            "Claim Status"
+        ].index(st.session_state.page),
         label_visibility="collapsed"
     )
 
-    st.markdown(
-        """
-        <div class="system-box">
-            <span class="system-dot"></span>
-            <b>System operational</b><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;Version 4 • Random Forest
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.session_state.page = selected_page
+
+    st.divider()
+
+    st.markdown("### SYSTEM")
+
+    st.success("System operational")
+
+    st.caption("Version 4 • Random Forest")
+
+    st.divider()
+
+    st.caption(
+        "Insurix provides preliminary "
+        "AI-assisted claim risk assessment."
     )
 
 
 # ============================================================
-# OVERVIEW
+# OVERVIEW PAGE
 # ============================================================
 
-if page == "🏠 Overview":
+if st.session_state.page == "Overview":
 
-    st.markdown(
-        """
-        <div class="eyebrow">
-            INSURIX / 01
-        </div>
+    st.caption("INSURIX / 01")
 
-        <div class="page-title">
-            Overview
-        </div>
+    st.title("Overview")
 
-        <div class="page-subtitle">
-            A clear starting point for every insurance claim.
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.write(
+        "Smarter insurance. Stronger evidence."
     )
 
-    st.markdown(
-        """
-        <div class="hero">
+    st.divider()
 
-            <div class="hero-label">
-                INSURIX × INSURANCE
-            </div>
+    # Hero section
+    hero_left, hero_right = st.columns([2.2, 1])
 
-            <div class="hero-title">
-                Make the evidence<br>
-                <span>work harder.</span>
-            </div>
+    with hero_left:
 
-            <div class="hero-text">
-                Capture the claim. Understand the risk.
-                Move forward with confidence.
-            </div>
+        st.info("FORENSIC × INSURANCE")
 
-            <div class="hero-shield">
-                🛡️
-            </div>
+        st.header("Make the evidence work harder.")
 
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+        st.write(
+            "Capture the claim. Understand the risk. "
+            "Move forward with confidence."
+        )
+
+        st.write("")
+
+        if st.button(
+            "Start Claim Assessment →",
+            key="overview_assessment"
+        ):
+            st.session_state.page = "Claim Assessment"
+            st.rerun()
+
+    with hero_right:
+
+        st.metric(
+            "AI MODEL",
+            "V4"
+        )
+
+        st.metric(
+            "MODEL TYPE",
+            "Random Forest"
+        )
+
+    st.divider()
+
+    st.subheader("Platform")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
 
-        st.markdown(
-            """
-            <div class="info-card">
+        st.markdown("### 🔍 Claim Assessment")
 
-                <div class="card-number">
-                    01
-                </div>
-
-                <div class="card-icon">
-                    🔍
-                </div>
-
-                <div class="card-title">
-                    Claim Assessment
-                </div>
-
-                <div class="card-text">
-                    Analyse claim indicators and obtain
-                    an AI-assisted preliminary risk
-                    classification.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.write(
+            "Evaluate claim indicators using the "
+            "Version 4 Random Forest model."
         )
+
+        if st.button(
+            "Open Assessment →",
+            key="overview_claim"
+        ):
+            st.session_state.page = "Claim Assessment"
+            st.rerun()
 
     with col2:
 
-        st.markdown(
-            """
-            <div class="info-card">
+        st.markdown("### 📄 Documents")
 
-                <div class="card-number">
-                    02
-                </div>
-
-                <div class="card-icon">
-                    📄
-                </div>
-
-                <div class="card-title">
-                    Documents
-                </div>
-
-                <div class="card-text">
-                    Review claim documentation and
-                    supporting evidence associated
-                    with a claim.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.write(
+            "Organise supporting documents and "
+            "forensic evidence for future review."
         )
+
+        if st.button(
+            "Open Documents →",
+            key="overview_documents"
+        ):
+            st.session_state.page = "Documents"
+            st.rerun()
 
     with col3:
 
-        st.markdown(
-            """
-            <div class="info-card">
+        st.markdown("### 📊 Claim Status")
 
-                <div class="card-number">
-                    03
-                </div>
-
-                <div class="card-icon">
-                    📊
-                </div>
-
-                <div class="card-title">
-                    Claim Status
-                </div>
-
-                <div class="card-text">
-                    View the latest assessment result
-                    generated during the current
-                    session.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.write(
+            "Review the most recent assessment "
+            "generated during this session."
         )
 
-    st.markdown(
-        """
-        <div class="ai-box">
-            <b>ⓘ AI-assisted assessment:</b>
-            Insurix uses a Version 4 Random Forest
-            classification model to provide a preliminary
-            Low, Medium, or High risk indication from
-            selected claim characteristics. The output
-            supports investigation and triage and does
-            not replace professional claim decisions.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+        if st.button(
+            "View Status →",
+            key="overview_status"
+        ):
+            st.session_state.page = "Claim Status"
+            st.rerun()
 
-    st.markdown(
-        """
-        <div class="footer">
-            INSURIX • AI-Powered Forensic Insurance Risk Assessment
-            • Version 4 • Random Forest Classification
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.divider()
+
+    st.subheader("How Insurix Works")
+
+    step1, step2, step3 = st.columns(3)
+
+    with step1:
+
+        st.markdown("### 01")
+
+        st.markdown("**Capture**")
+
+        st.write(
+            "Enter the available claim indicators."
+        )
+
+    with step2:
+
+        st.markdown("### 02")
+
+        st.markdown("**Analyse**")
+
+        st.write(
+            "The Version 4 Random Forest model "
+            "evaluates the claim."
+        )
+
+    with step3:
+
+        st.markdown("### 03")
+
+        st.markdown("**Assess**")
+
+        st.write(
+            "Receive a preliminary Low, Medium "
+            "or High risk classification."
+        )
+
+    st.divider()
+
+    st.caption(
+        "INSURIX • AI-Powered Forensic Insurance Risk Assessment • Version 4"
     )
 
 
 # ============================================================
-# CLAIM ASSESSMENT
+# CLAIM ASSESSMENT PAGE
 # ============================================================
 
-elif page == "🔍 Claim Assessment":
+elif st.session_state.page == "Claim Assessment":
 
-    st.markdown(
-        """
-        <div class="eyebrow">
-            INSURIX / 02
-        </div>
+    st.caption("PUBLIC PORTAL / CLAIM ASSESSMENT")
 
-        <div class="page-title">
-            Claim Assessment
-        </div>
+    st.title("Claim Assessment")
 
-        <div class="page-subtitle">
-            Enter the available claim indicators to generate
-            a preliminary forensic insurance risk assessment.
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.write(
+        "Build a consistent evidence record before review."
     )
 
-    st.markdown(
-        """
-        <div class="section-card">
-
-            <div class="section-number">
-                VERSION 4
-            </div>
-
-            <div class="section-title">
-                Claim Intelligence Input
-            </div>
-
-            <div class="section-description">
-                The Version 4 Random Forest model evaluates
-                seven claim-related features.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.divider()
 
     # --------------------------------------------------------
-    # INPUTS
+    # CLAIM IDENTITY
     # --------------------------------------------------------
 
-    col1, col2 = st.columns(2)
+    st.subheader("01  •  Claim identity")
 
-    with col1:
+    identity_col1, identity_col2 = st.columns(2)
 
-        claim_amount = st.number_input(
-            "Claim Amount (₹)",
+    with identity_col1:
+
+        policyholder_name = st.text_input(
+            "Policyholder name",
+            placeholder="Enter policyholder name"
+        )
+
+        incident_location = st.text_input(
+            "Incident location",
+            placeholder="City / District"
+        )
+
+        incident_date = st.date_input(
+            "Incident date"
+        )
+
+        incident_description = st.text_area(
+            "Incident description",
+            placeholder="Briefly describe the incident"
+        )
+
+    with identity_col2:
+
+        claim_id = st.text_input(
+            "Claim ID",
+            placeholder="Enter claim ID"
+        )
+
+        estimated_amount = st.number_input(
+            "Estimated claim amount (₹)",
             min_value=0.0,
             value=250000.0,
             step=10000.0
         )
 
         previous_claims = st.number_input(
-            "Previous Claims",
+            "Previous claims",
             min_value=0,
             value=2,
             step=1
         )
 
+    st.divider()
+
+    # --------------------------------------------------------
+    # EVIDENCE AVAILABILITY
+    # --------------------------------------------------------
+
+    st.subheader("02  •  Evidence availability")
+
+    evidence_col1, evidence_col2 = st.columns(2)
+
+    with evidence_col1:
+
+        cctv_available = st.selectbox(
+            "CCTV available",
+            ["No", "Yes"]
+        )
+
+        police_report = st.selectbox(
+            "Police report",
+            ["No", "Yes"]
+        )
+
+        vehicle_inspection = st.selectbox(
+            "Vehicle inspection",
+            ["No", "Yes"]
+        )
+
         rejected_claims = st.number_input(
-            "Rejected Claims",
+            "Rejected claims",
             min_value=0,
             value=0,
             step=1
         )
 
+    with evidence_col2:
+
+        photos_available = st.selectbox(
+            "Photos available",
+            ["No", "Yes"]
+        )
+
+        witness_available = st.selectbox(
+            "Witness available",
+            ["No", "Yes"]
+        )
+
         claim_frequency = st.number_input(
-            "Claim Frequency",
-            min_value=0.0,
-            value=1.0,
-            step=0.5
+            "Claim frequency",
+            min_value=0,
+            value=1,
+            step=1
         )
 
-    with col2:
-
-        evidence_status = st.selectbox(
-            "Evidence Status",
+        document_consistency_text = st.selectbox(
+            "Document consistency",
             ["Yes", "No"]
         )
 
-        document_consistency = st.selectbox(
-            "Document Consistency",
-            ["Yes", "No"]
-        )
-
-        claim_after_policy = st.selectbox(
-            "Claim After Policy",
-            ["Yes", "No"]
-        )
-
-        st.write("")
-        st.write("")
-
-        assess = st.button(
-            "🔍  Assess Claim Risk",
-            use_container_width=True
-        )
+    st.divider()
 
     # --------------------------------------------------------
-    # ASSESSMENT
+    # ADDITIONAL MODEL INDICATORS
     # --------------------------------------------------------
 
-    if assess:
+    st.subheader("03  •  Forensic risk indicators")
 
-        evidence_value = 1 if evidence_status == "Yes" else 0
-        document_value = 1 if document_consistency == "Yes" else 0
-        after_policy_value = 1 if claim_after_policy == "Yes" else 0
+    model_col1, model_col2 = st.columns(2)
 
-        input_data = pd.DataFrame(
-            [[
-                claim_amount,
-                previous_claims,
-                rejected_claims,
-                claim_frequency,
-                evidence_value,
-                document_value,
-                after_policy_value
-            ]],
+    with model_col1:
+
+        evidence_status_text = st.selectbox(
+            "Evidence status",
+            ["Yes", "No"]
+        )
+
+    with model_col2:
+
+        claim_after_policy_text = st.selectbox(
+            "Claim after policy",
+            ["No", "Yes"]
+        )
+
+    st.info(
+        "The Version 4 Random Forest model evaluates seven "
+        "claim-related features."
+    )
+
+    st.write("")
+
+    # --------------------------------------------------------
+    # RUN ASSESSMENT
+    # --------------------------------------------------------
+
+    run_assessment = st.button(
+        "Run Assessment  →",
+        key="run_assessment",
+        use_container_width=False
+    )
+
+    if run_assessment:
+
+        # Convert Yes / No to 1 / 0
+        evidence_status = 1 if evidence_status_text == "Yes" else 0
+
+        document_consistency = (
+            1 if document_consistency_text == "Yes" else 0
+        )
+
+        claim_after_policy = (
+            1 if claim_after_policy_text == "Yes" else 0
+        )
+
+        # ----------------------------------------------------
+        # CREATE MODEL INPUT IN EXACT V4 FEATURE ORDER
+        # ----------------------------------------------------
+
+        input_data = {
+            "claim_amount": estimated_amount,
+            "previous_claims": previous_claims,
+            "rejected_claims": rejected_claims,
+            "claim_frequency": claim_frequency,
+            "evidence_status": evidence_status,
+            "document_consistency": document_consistency,
+            "claim_after_policy": claim_after_policy
+        }
+
+        input_df = pd.DataFrame(
+            [input_data],
             columns=features
         )
 
         try:
 
-            prediction = model.predict(input_data)[0]
+            # ------------------------------------------------
+            # VERSION 4 RANDOM FOREST PREDICTION
+            # ------------------------------------------------
 
-            probabilities = model.predict_proba(input_data)[0]
+            prediction = model.predict(input_df)
 
-            risk = label_encoder.inverse_transform(
-                [prediction]
+            prediction_label = label_encoder.inverse_transform(
+                prediction
             )[0]
 
-            confidence = max(probabilities) * 100
+            probabilities = model.predict_proba(
+                input_df
+            )[0]
 
-            st.session_state.last_risk = risk
-            st.session_state.last_confidence = confidence
-            st.session_state.last_probabilities = probabilities
-            st.session_state.assessment_completed = True
+            class_names = label_encoder.classes_
 
-            st.markdown("---")
+            probability_dict = {}
 
-            st.markdown(
-                """
-                <div class="section-card">
+            for class_name, probability in zip(
+                class_names,
+                probabilities
+            ):
+                probability_dict[class_name] = (
+                    float(probability) * 100
+                )
 
-                    <div class="section-number">
-                        ASSESSMENT RESULT
-                    </div>
+            confidence = max(probability_dict.values())
 
-                    <div class="section-title">
-                        Preliminary Risk Classification
-                    </div>
-
-                    <div class="section-description">
-                        Result generated by the Version 4 Random Forest model.
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True
+            # Save result
+            st.session_state.last_risk = str(
+                prediction_label
             )
 
-            result_col1, result_col2, result_col3 = st.columns(3)
-
-            if str(risk).lower() == "low":
-                risk_class = "risk-low"
-            elif str(risk).lower() == "medium":
-                risk_class = "risk-medium"
-            else:
-                risk_class = "risk-high"
-
-            with result_col1:
-
-                st.markdown(
-                    f"""
-                    <div class="result-card">
-
-                        <div class="result-label">
-                            Risk Level
-                        </div>
-
-                        <div class="result-value {risk_class}">
-                            {str(risk).upper()}
-                        </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-            with result_col2:
-
-                st.markdown(
-                    f"""
-                    <div class="result-card">
-
-                        <div class="result-label">
-                            Confidence
-                        </div>
-
-                        <div class="result-value">
-                            {confidence:.2f}%
-                        </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-            with result_col3:
-
-                st.markdown(
-                    f"""
-                    <div class="result-card">
-
-                        <div class="result-label">
-                            Model
-                        </div>
-
-                        <div class="result-value">
-                            V4 RF
-                        </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-            # ------------------------------------------------
-            # PROBABILITY BREAKDOWN
-            # ------------------------------------------------
-
-            st.markdown(
-                """
-                <div class="section-card">
-                    <div class="section-title">
-                        Risk Probability Breakdown
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
+            st.session_state.last_confidence = float(
+                confidence
             )
 
-            probability_df = pd.DataFrame(
-                {
-                    "Risk Level": label_encoder.classes_,
-                    "Probability (%)": [
-                        round(p * 100, 2)
-                        for p in probabilities
-                    ]
-                }
+            st.session_state.last_probabilities = (
+                probability_dict
             )
 
-            st.dataframe(
-                probability_df,
-                use_container_width=True,
-                hide_index=True
-            )
-
-            # ------------------------------------------------
-            # FEATURE IMPORTANCE
-            # ------------------------------------------------
-
-            if hasattr(model, "feature_importances_"):
-
-                st.markdown(
-                    """
-                    <div class="section-card">
-
-                        <div class="section-title">
-                            Model Feature Importance
-                        </div>
-
-                        <div class="section-description">
-                            Relative contribution of each Version 4
-                            model feature to the Random Forest.
-                        </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-                importance_df = pd.DataFrame(
-                    {
-                        "Feature": features,
-                        "Importance": model.feature_importances_
-                    }
-                )
-
-                importance_df = importance_df.sort_values(
-                    "Importance",
-                    ascending=False
-                )
-
-                importance_df["Importance"] = (
-                    importance_df["Importance"] * 100
-                ).round(2)
-
-                st.bar_chart(
-                    importance_df.set_index("Feature")
-                )
-
-                st.dataframe(
-                    importance_df,
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-            # ------------------------------------------------
-            # FORENSIC NOTE
-            # ------------------------------------------------
-
-            st.markdown(
-                """
-                <div class="ai-box">
-
-                    <b>Forensic interpretation note:</b><br>
-
-                    The prediction is a preliminary machine-learning
-                    classification based on the supplied claim indicators.
-                    A High-risk classification should be treated as an
-                    investigation/verification signal rather than automatic
-                    evidence of fraud or a reason for automatic claim rejection.
-
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            st.session_state.assessment_done = True
 
         except Exception as e:
 
-            st.error("Assessment could not be completed.")
-            st.error(str(e))
-
-    st.markdown(
-        """
-        <div class="footer">
-            INSURIX • AI-Powered Forensic Insurance Risk Assessment
-            • Version 4 • Random Forest Classification
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# ============================================================
-# DOCUMENTS
-# ============================================================
-
-elif page == "📄 Documents":
-
-    st.markdown(
-        """
-        <div class="eyebrow">
-            INSURIX / 03
-        </div>
-
-        <div class="page-title">
-            Documents
-        </div>
-
-        <div class="page-subtitle">
-            Supporting documents and evidence for claim review.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <div class="card-number">
-                    01
-                </div>
-
-                <div class="card-icon">
-                    📄
-                </div>
-
-                <div class="card-title">
-                    Claim Documentation
-                </div>
-
-                <div class="card-text">
-                    Upload and organise claim-related
-                    documents before assessment.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with col2:
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <div class="card-number">
-                    02
-                </div>
-
-                <div class="card-icon">
-                    🔬
-                </div>
-
-                <div class="card-title">
-                    Forensic Evidence
-                </div>
-
-                <div class="card-text">
-                    Supporting evidence can be associated
-                    with the claim for future forensic
-                    analysis.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    st.write("")
-    st.write("")
-
-    st.markdown(
-        """
-        <div class="section-card">
-
-            <div class="section-number">
-                DOCUMENT UPLOAD
-            </div>
-
-            <div class="section-title">
-                Supporting Claim Evidence
-            </div>
-
-            <div class="section-description">
-                Upload documents associated with the claim.
-                Current Version 4 model classification is based
-                on the seven structured claim indicators.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    uploaded_files = st.file_uploader(
-        "Upload claim documents",
-        type=[
-            "pdf",
-            "jpg",
-            "jpeg",
-            "png",
-            "docx",
-            "xlsx",
-            "csv"
-        ],
-        accept_multiple_files=True
-    )
-
-    if uploaded_files:
-
-        st.success(
-            f"{len(uploaded_files)} document(s) uploaded for this session."
-        )
-
-        for file in uploaded_files:
-
-            st.write(
-                f"📄 **{file.name}** — "
-                f"{file.size / 1024:.1f} KB"
+            st.error(
+                "The assessment could not be completed."
             )
 
-    st.markdown(
-        """
-        <div class="ai-box">
-
-            <b>Future development:</b>
-            OCR, metadata analysis, document consistency checking,
-            structured evidence extraction and automated document
-            analysis can be integrated into this section in later
-            versions.
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        """
-        <div class="footer">
-            INSURIX • AI-Powered Forensic Insurance Risk Assessment
-            • Version 4 • Random Forest Classification
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# ============================================================
-# CLAIM STATUS
-# ============================================================
-
-elif page == "📊 Claim Status":
-
-    st.markdown(
-        """
-        <div class="eyebrow">
-            INSURIX / 04
-        </div>
-
-        <div class="page-title">
-            Claim Status
-        </div>
-
-        <div class="page-subtitle">
-            View the latest assessment generated during this session.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+            st.code(str(e))
 
     # --------------------------------------------------------
-    # NO ASSESSMENT
+    # RESULT
     # --------------------------------------------------------
 
-    if not st.session_state.assessment_completed:
+    if st.session_state.assessment_done:
 
-        st.markdown(
-            """
-            <div class="section-card">
+        st.divider()
 
-                <div class="status-icon">
-                    ℹ️
-                </div>
-
-                <div class="section-title">
-                    No assessment yet
-                </div>
-
-                <div class="section-description">
-                    Complete a claim assessment first.
-                    The latest Version 4 Random Forest result
-                    will appear here.
-
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    # --------------------------------------------------------
-    # ASSESSMENT EXISTS
-    # --------------------------------------------------------
-
-    else:
+        st.subheader("Assessment Result")
 
         risk = st.session_state.last_risk
         confidence = st.session_state.last_confidence
 
-        col1, col2, col3 = st.columns(3)
+        result_col1, result_col2, result_col3 = st.columns(3)
 
-        with col1:
+        with result_col1:
 
-            st.markdown(
-                """
-                <div class="status-card">
-
-                    <div class="status-icon">
-                        ✅
-                    </div>
-
-                    <div class="status-title">
-                        Assessment Status
-                    </div>
-
-                    <div class="status-text">
-                        Completed successfully.
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True
+            st.metric(
+                "Risk Level",
+                risk
             )
 
-        with col2:
+        with result_col2:
 
-            if str(risk).lower() == "low":
-                status_class = "risk-low"
-            elif str(risk).lower() == "medium":
-                status_class = "risk-medium"
-            else:
-                status_class = "risk-high"
-
-            st.markdown(
-                f"""
-                <div class="status-card">
-
-                    <div class="status-icon">
-                        🛡️
-                    </div>
-
-                    <div class="status-title">
-                        Risk Level
-                    </div>
-
-                    <div class="status-text {status_class}">
-                        <b>{str(risk).upper()}</b>
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True
+            st.metric(
+                "Confidence",
+                f"{confidence:.2f}%"
             )
 
-        with col3:
+        with result_col3:
 
-            st.markdown(
-                f"""
-                <div class="status-card">
-
-                    <div class="status-icon">
-                        %
-                    </div>
-
-                    <div class="status-title">
-                        Confidence
-                    </div>
-
-                    <div class="status-text">
-                        <b>{confidence:.2f}%</b>
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True
+            st.metric(
+                "Model",
+                "V4 Random Forest"
             )
 
-        st.markdown(
-            """
-            <div class="ai-box">
+        # Risk message
+        risk_lower = risk.lower()
 
-                <b>Next step:</b>
-                Use the risk classification as a preliminary
-                decision-support indicator. Additional evidence,
-                investigation and professional review should be
-                considered before making a claim decision.
+        if risk_lower == "high":
 
-            </div>
-            """,
-            unsafe_allow_html=True
+            st.error(
+                "High-risk classification. "
+                "Further forensic or investigative review "
+                "may be appropriate."
+            )
+
+        elif risk_lower == "medium":
+
+            st.warning(
+                "Medium-risk classification. "
+                "Additional verification may be considered."
+            )
+
+        else:
+
+            st.success(
+                "Low-risk classification based on the "
+                "entered indicators."
+            )
+
+        st.divider()
+
+        # ----------------------------------------------------
+        # PROBABILITY BREAKDOWN
+        # ----------------------------------------------------
+
+        st.subheader("Risk Probability Breakdown")
+
+        probabilities = (
+            st.session_state.last_probabilities
         )
 
-        st.write("")
-
-        st.markdown(
-            """
-            <div class="section-card">
-
-                <div class="section-number">
-                    INSURIX / CURRENT SESSION
-                </div>
-
-                <div class="section-title">
-                    Latest Assessment Available
-                </div>
-
-                <div class="section-description">
-                    The current session contains a completed
-                    Version 4 Random Forest assessment.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        probability_cols = st.columns(
+            len(probabilities)
         )
 
-    st.markdown(
-        """
-        <div class="footer">
-            INSURIX • AI-Powered Forensic Insurance Risk Assessment
-            • Version 4 • Random Forest Classification
-        </div>
-        """,
-        unsafe_allow_html=True
+        for column, (class_name, probability) in zip(
+            probability_cols,
+            probabilities.items()
+        ):
+
+            with column:
+
+                st.metric(
+                    class_name.title(),
+                    f"{probability:.2f}%"
+                )
+
+                st.progress(
+                    min(
+                        max(probability / 100, 0.0),
+                        1.0
+                    )
+                )
+
+        st.divider()
+
+        # ----------------------------------------------------
+        # FEATURE IMPORTANCE
+        # ----------------------------------------------------
+
+        st.subheader("Model Feature Importance")
+
+        try:
+
+            importance_df = pd.DataFrame(
+                {
+                    "Feature": features,
+                    "Importance": model.feature_importances_
+                }
+            )
+
+            importance_df = importance_df.sort_values(
+                "Importance",
+                ascending=False
+            )
+
+            importance_df["Importance (%)"] = (
+                importance_df["Importance"] * 100
+            ).round(2)
+
+            st.dataframe(
+                importance_df[
+                    ["Feature", "Importance (%)"]
+                ],
+                use_container_width=True,
+                hide_index=True
+            )
+
+        except Exception:
+
+            st.info(
+                "Feature importance is not available "
+                "for this model."
+            )
+
+        st.divider()
+
+        st.info(
+            "Forensic interpretation: this output is a "
+            "preliminary AI-assisted risk assessment. "
+            "It should support, not replace, professional "
+            "claim investigation and evidence review."
+        )
+
+
+# ============================================================
+# DOCUMENTS PAGE
+# ============================================================
+
+elif st.session_state.page == "Documents":
+
+    st.caption("PUBLIC PORTAL / DOCUMENTS")
+
+    st.title("Documents")
+
+    st.write(
+        "Supporting documents can be linked to each "
+        "claim assessment."
     )
+
+    st.divider()
+
+    doc_col1, doc_col2 = st.columns(2)
+
+    with doc_col1:
+
+        st.subheader("01  •  Claim Documentation")
+
+        st.write(
+            "Upload documents associated with the insurance claim."
+        )
+
+        uploaded_files = st.file_uploader(
+            "Upload documents",
+            accept_multiple_files=True,
+            type=[
+                "pdf",
+                "png",
+                "jpg",
+                "jpeg",
+                "docx",
+                "xlsx",
+                "csv"
+            ]
+        )
+
+    with doc_col2:
+
+        st.subheader("02  •  Forensic Evidence")
+
+        st.write(
+            "Evidence files can be organised for future "
+            "forensic analysis and review."
+        )
+
+        st.info(
+            "Future versions can integrate OCR, metadata "
+            "analysis, consistency checking and automated "
+            "evidence extraction."
+        )
+
+    if uploaded_files:
+
+        st.divider()
+
+        st.subheader("Uploaded Documents")
+
+        for file in uploaded_files:
+
+            st.write(
+                f"📄 {file.name}  •  "
+                f"{file.size / 1024:.1f} KB"
+            )
+
+        st.success(
+            f"{len(uploaded_files)} document(s) selected."
+        )
+
+    st.divider()
+
+    st.subheader("Planned Evidence Workflow")
+
+    workflow1, workflow2, workflow3 = st.columns(3)
+
+    with workflow1:
+
+        st.markdown("### 01")
+
+        st.markdown("**Upload**")
+
+        st.write(
+            "Collect claim-related supporting files."
+        )
+
+    with workflow2:
+
+        st.markdown("### 02")
+
+        st.markdown("**Review**")
+
+        st.write(
+            "Review documents for consistency and "
+            "available forensic evidence."
+        )
+
+    with workflow3:
+
+        st.markdown("### 03")
+
+        st.markdown("**Analyse**")
+
+        st.write(
+            "Future AI modules can assist with "
+            "document and evidence analysis."
+        )
+
+
+# ============================================================
+# CLAIM STATUS PAGE
+# ============================================================
+
+elif st.session_state.page == "Claim Status":
+
+    st.caption("PUBLIC PORTAL / CLAIM STATUS")
+
+    st.title("Claim Status")
+
+    st.write(
+        "Review the latest preliminary risk assessment "
+        "generated in this session."
+    )
+
+    st.divider()
+
+    if not st.session_state.assessment_done:
+
+        st.info(
+            "No claim assessment has been completed yet."
+        )
+
+        if st.button(
+            "Go to Claim Assessment →",
+            key="status_assessment"
+        ):
+
+            st.session_state.page = "Claim Assessment"
+            st.rerun()
+
+    else:
+
+        status_col1, status_col2, status_col3 = st.columns(3)
+
+        with status_col1:
+
+            st.metric(
+                "Risk Level",
+                st.session_state.last_risk
+            )
+
+        with status_col2:
+
+            st.metric(
+                "Confidence",
+                f"{st.session_state.last_confidence:.2f}%"
+            )
+
+        with status_col3:
+
+            st.metric(
+                "Status",
+                "Assessed"
+            )
+
+        st.divider()
+
+        risk = st.session_state.last_risk.lower()
+
+        if risk == "high":
+
+            st.error(
+                "Current classification: HIGH RISK"
+            )
+
+        elif risk == "medium":
+
+            st.warning(
+                "Current classification: MEDIUM RISK"
+            )
+
+        else:
+
+            st.success(
+                "Current classification: LOW RISK"
+            )
+
+        st.subheader("Risk Probability")
+
+        probabilities = (
+            st.session_state.last_probabilities
+        )
+
+        for class_name, probability in probabilities.items():
+
+            st.write(
+                f"**{class_name.title()}** — "
+                f"{probability:.2f}%"
+            )
+
+            st.progress(
+                min(
+                    max(probability / 100, 0.0),
+                    1.0
+                )
+            )
+
+        st.divider()
+
+        st.info(
+            "This status represents the latest preliminary "
+            "AI-assisted assessment in the current session."
+        )
+
+        if st.button(
+            "Run New Assessment →",
+            key="new_assessment"
+        ):
+
+            st.session_state.page = "Claim Assessment"
+            st.rerun()
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "INSURIX • AI-Powered Forensic Insurance Risk Assessment "
+    "• Version 4 • Random Forest Classification"
+)
