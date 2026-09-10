@@ -3,6 +3,7 @@ import joblib
 import pandas as pd
 import os
 import re
+import textwrap
 
 from pypdf import PdfReader
 from docx import Document
@@ -490,6 +491,31 @@ if "document_analysis" not in st.session_state:
     st.session_state.document_analysis = None
 
 
+if "last_risk_score" not in st.session_state:
+
+    st.session_state.last_risk_score = None
+
+
+if "last_risk_factors" not in st.session_state:
+
+    st.session_state.last_risk_factors = []
+
+
+if "last_missing_information" not in st.session_state:
+
+    st.session_state.last_missing_information = []
+
+
+if "last_claim_id" not in st.session_state:
+
+    st.session_state.last_claim_id = ""
+
+
+if "last_policyholder" not in st.session_state:
+
+    st.session_state.last_policyholder = ""
+
+
 # ============================================================
 # PROFESSIONAL CSS
 # ============================================================
@@ -564,6 +590,115 @@ st.markdown(
         border-color: #e3e8ef;
     }
 
+
+    .result-card {
+        background: #ffffff;
+        border: 1px solid #e2e9f3;
+        border-radius: 24px;
+        padding: 34px;
+        margin-top: 24px;
+        box-shadow: 0 10px 35px rgba(20, 45, 90, 0.08);
+    }
+    .result-layout {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 38px;
+        align-items: center;
+    }
+    .score-ring {
+        width: 178px;
+        height: 178px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: auto;
+        background: conic-gradient(var(--risk-color) calc(var(--score) * 1%), #dce5f2 0);
+    }
+    .score-inner {
+        width: 134px;
+        height: 134px;
+        border-radius: 50%;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .score-number {
+        font-size: 50px;
+        font-weight: 800;
+        line-height: 1;
+        color: var(--risk-color);
+    }
+    .score-label {
+        font-size: 13px;
+        color: #66758d;
+        font-weight: 700;
+        margin-top: 7px;
+    }
+    .risk-badge {
+        display: inline-block;
+        padding: 7px 15px;
+        border-radius: 18px;
+        font-size: 14px;
+        font-weight: 800;
+        margin-bottom: 8px;
+    }
+    .badge-low { background: #dff5e5; color: #23803d; }
+    .badge-medium { background: #fff0cf; color: #a56800; }
+    .badge-high { background: #ffe0e5; color: #d92745; }
+    .result-title {
+        font-size: 38px;
+        font-weight: 800;
+        color: #142b5c;
+        margin: 0 0 10px 0;
+    }
+    .result-description {
+        font-size: 16px;
+        line-height: 1.55;
+        color: #61718a;
+        max-width: 900px;
+    }
+    .result-columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 50px;
+        margin-top: 34px;
+    }
+    .result-section-title {
+        font-size: 17px;
+        font-weight: 800;
+        color: #142b5c;
+        margin-bottom: 13px;
+        letter-spacing: .3px;
+    }
+    .risk-item, .missing-item {
+        font-size: 15px;
+        color: #60708a;
+        margin: 9px 0;
+        line-height: 1.45;
+    }
+    .risk-item::before {
+        content: "•";
+        color: #ed334f;
+        font-size: 22px;
+        font-weight: 800;
+        margin-right: 10px;
+    }
+    .missing-item::before {
+        content: "•";
+        color: #f0a21a;
+        font-size: 22px;
+        font-weight: 800;
+        margin-right: 10px;
+    }
+    @media (max-width: 800px) {
+        .result-layout { grid-template-columns: 1fr; }
+        .result-columns { grid-template-columns: 1fr; gap: 20px; }
+        .result-title { font-size: 30px; }
+    }
+
     </style>
     """,
     unsafe_allow_html=True
@@ -636,7 +771,7 @@ if st.session_state.page == "Overview":
 
     st.caption("INSURIX / 01")
 
-    st.title("Overview")
+    st.title("INSURIX")
 
     st.write(
         "Smarter insurance. Stronger evidence."
@@ -1221,6 +1356,22 @@ elif st.session_state.page == "Claim Assessment":
     )
 
 
+    # Keep these values available on every Streamlit rerun so the result
+    # card remains stable when the user clicks Generate Report or navigates.
+    manual_evidence_status = 1 if evidence_status_text == "Yes" else 0
+    manual_document_consistency = (
+        1 if document_consistency_text == "Yes" else 0
+    )
+    claim_after_policy = 1 if claim_after_policy_text == "Yes" else 0
+
+    if document_analysis is not None:
+        evidence_status = document_analysis["evidence_status"]
+        document_consistency = document_analysis["document_consistency"]
+    else:
+        evidence_status = manual_evidence_status
+        document_consistency = manual_document_consistency
+
+
     st.write("")
 
 
@@ -1424,312 +1575,302 @@ elif st.session_state.page == "Claim Assessment":
 
 
     # ========================================================
-    # RESULT
+    # RESULT — THINK10X-STYLE INSURIX RESULT CARD
     # ========================================================
 
     if st.session_state.assessment_done:
 
         st.divider()
 
-        st.subheader(
-            "Assessment Result"
+        risk = st.session_state.last_risk
+        confidence = st.session_state.last_confidence
+        probabilities = st.session_state.last_probabilities or {}
+
+        high_prob = float(probabilities.get("High", 0))
+        medium_prob = float(probabilities.get("Medium", 0))
+        low_prob = float(probabilities.get("Low", 0))
+
+        # Presentation score for the circular UI. It is deliberately
+        # labelled as a preliminary risk score and is not model confidence.
+        risk_score = round(
+            (high_prob * 1.0) +
+            (medium_prob * 0.5) +
+            (low_prob * 0.1)
         )
+        risk_score = max(0, min(100, risk_score))
 
-
-        risk = (
-            st.session_state.last_risk
-        )
-
-        confidence = (
-            st.session_state.last_confidence
-        )
-
-
-        result_col1, result_col2, result_col3 = (
-            st.columns(3)
-        )
-
-
-        with result_col1:
-
-            st.metric(
-                "Risk Level",
-                risk
-            )
-
-
-        with result_col2:
-
-            st.metric(
-                "Confidence",
-                f"{confidence:.2f}%"
-            )
-
-
-        with result_col3:
-
-            st.metric(
-                "Model",
-                "V4 Random Forest"
-            )
-
-
-        # ----------------------------------------------------
-        # RISK MESSAGE
-        # ----------------------------------------------------
-
-        risk_lower = risk.lower()
-
+        risk_lower = str(risk).lower()
 
         if risk_lower == "high":
-
-            st.error(
-                "High-risk classification. "
-                "Further forensic or investigative "
-                "review may be appropriate."
+            risk_color = "#ed334f"
+            badge_class = "badge-high"
+            description = (
+                "This claim shows multiple risk indicators and requires "
+                "further forensic investigation before the final decision."
             )
-
-
         elif risk_lower == "medium":
-
-            st.warning(
-                "Medium-risk classification. "
-                "Additional verification may "
-                "be considered."
+            risk_color = "#f0a21a"
+            badge_class = "badge-medium"
+            description = (
+                "This claim shows some risk indicators and should receive "
+                "additional verification before the final decision."
             )
-
-
         else:
-
-            st.success(
-                "Low-risk classification based "
-                "on the entered indicators."
+            risk_color = "#2e9b50"
+            badge_class = "badge-low"
+            description = (
+                "This claim currently shows relatively low-risk indicators. "
+                "Routine verification is recommended before the final decision."
             )
 
+        # ----------------------------------------------------
+        # Risk factors
+        # ----------------------------------------------------
+        risk_factors = []
 
+        if estimated_amount >= 300000:
+            risk_factors.append(f"High claim amount (₹{estimated_amount:,.0f})")
+        elif estimated_amount >= 200000:
+            risk_factors.append(f"Elevated claim amount (₹{estimated_amount:,.0f})")
+
+        if previous_claims >= 5:
+            risk_factors.append(f"Multiple previous claims ({previous_claims})")
+        elif previous_claims >= 3:
+            risk_factors.append(f"Several previous claims ({previous_claims})")
+
+        if rejected_claims >= 3:
+            risk_factors.append(f"Multiple rejected claims ({rejected_claims})")
+        elif rejected_claims >= 1:
+            risk_factors.append(f"Previous rejected claim(s) ({rejected_claims})")
+
+        if claim_frequency >= 7:
+            risk_factors.append(f"High claim frequency ({claim_frequency})")
+        elif claim_frequency >= 4:
+            risk_factors.append(f"Moderate claim frequency ({claim_frequency})")
+
+        if claim_after_policy == 1:
+            risk_factors.append("Claim after policy")
+
+        if evidence_status == 0:
+            risk_factors.append("Limited supporting evidence")
+
+        if document_consistency == 0:
+            risk_factors.append("Document consistency issues")
+
+        if not risk_factors:
+            risk_factors.append("No major risk indicators identified")
+
+        # ----------------------------------------------------
+        # Missing information
+        # ----------------------------------------------------
+        missing_information = []
+
+        if police_report == "No":
+            missing_information.append("Police report not available")
+        if vehicle_inspection == "No":
+            missing_information.append("Vehicle inspection not available")
+        if photos_available == "No":
+            missing_information.append("Photographs not available")
+        if witness_available == "No":
+            missing_information.append("Witness statement not available")
+        if cctv_available == "No":
+            missing_information.append("CCTV evidence not available")
+
+        if not missing_information:
+            missing_information.append("Complete")
+
+        risk_items_html = "".join(
+            f'<div class="risk-item">{item}</div>' for item in risk_factors
+        )
+        missing_items_html = "".join(
+            f'<div class="missing-item">{item}</div>' for item in missing_information
+        )
+
+        # ----------------------------------------------------
+        # THINK10X-style result card
+        # ----------------------------------------------------
+        result_html = (
+            '<div class="result-card">'
+            '<div class="result-layout">'
+            '<div>'
+            f'<div class="score-ring" style="--score:{risk_score}; --risk-color:{risk_color};">'
+            '<div class="score-inner">'
+            f'<div class="score-number">{risk_score}</div>'
+            '<div class="score-label">/100 RISK SCORE</div>'
+            '</div></div>'
+            '</div>'
+            '<div>'
+            f'<div class="risk-badge {badge_class}">{str(risk).upper()} RISK</div>'
+            f'<div class="result-title">{str(risk).title()} Risk</div>'
+            f'<div class="result-description">{description}</div>'
+            '</div></div>'
+            '<div class="result-columns">'
+            '<div>'
+            '<div class="result-section-title">RISK FACTORS</div>'
+            f'{risk_items_html}'
+            '</div>'
+            '<div>'
+            '<div class="result-section-title">MISSING INFORMATION</div>'
+            f'{missing_items_html}'
+            '</div></div>'
+            '</div>'
+        )
+
+        st.markdown(result_html, unsafe_allow_html=True)
+
+        st.session_state.last_risk_score = risk_score
+        st.session_state.last_risk_factors = risk_factors
+        st.session_state.last_missing_information = missing_information
+        st.session_state.last_claim_id = claim_id
+        st.session_state.last_policyholder = policyholder_name
+
+        # ----------------------------------------------------
+        # Generate report
+        # ----------------------------------------------------
+        st.write("")
+        report_col, _ = st.columns([1, 4])
+        with report_col:
+            if st.button("📄 Generate Report", key="generate_risk_report"):
+                report_lines = [
+                    "INSURIX — INSURANCE RISK INTELLIGENCE",
+                    "FORENSIC × INSURANCE",
+                    "",
+                    f"Claim ID: {claim_id}",
+                    f"Policyholder: {policyholder_name}",
+                    f"Incident Location: {incident_location}",
+                    f"Incident Date: {incident_date}",
+                    "",
+                    "PRELIMINARY RISK ASSESSMENT",
+                    f"Risk Level: {str(risk).upper()}",
+                    f"Preliminary Risk Score: {risk_score}/100",
+                    f"Model Confidence: {confidence:.2f}%",
+                    "",
+                    "RISK PROBABILITY",
+                    f"High: {high_prob:.2f}%",
+                    f"Medium: {medium_prob:.2f}%",
+                    f"Low: {low_prob:.2f}%",
+                    "",
+                    "RISK FACTORS",
+                ]
+                report_lines.extend(f"- {item}" for item in risk_factors)
+                report_lines.append("")
+                report_lines.append("MISSING INFORMATION")
+                report_lines.extend(f"- {item}" for item in missing_information)
+                report_lines.extend([
+                    "",
+                    "DISCLAIMER:",
+                    "This AI assessment is preliminary decision-support information. "
+                    "It does not establish fraud or criminal activity. Final decisions "
+                    "must be made by authorized insurance and forensic professionals."
+                ])
+                report_text = "\n".join(report_lines)
+
+                st.download_button(
+                    label="Download Risk Report",
+                    data=report_text,
+                    file_name=f"{claim_id or 'Insurix'}_Risk_Report.txt",
+                    mime="text/plain",
+                    key="download_risk_report"
+                )
+
+        # ----------------------------------------------------
+        # AI probability breakdown
+        # ----------------------------------------------------
         st.divider()
+        st.subheader("AI Risk Probability")
 
+        probability_cols = st.columns(3)
 
-        # ====================================================
-        # RECOMMENDATION
-        # ====================================================
+        with probability_cols[0]:
+            st.metric("High", f"{high_prob:.2f}%")
+            st.progress(min(max(high_prob / 100, 0.0), 1.0))
 
-        st.subheader(
-            "Recommended Action"
-        )
+        with probability_cols[1]:
+            st.metric("Medium", f"{medium_prob:.2f}%")
+            st.progress(min(max(medium_prob / 100, 0.0), 1.0))
 
-
-        if risk_lower == "high":
-
-            st.warning(
-                "Recommended action: Prioritise the "
-                "claim for further forensic and "
-                "investigative review."
-            )
-
-
-        elif risk_lower == "medium":
-
-            st.info(
-                "Recommended action: Perform additional "
-                "document and evidence verification "
-                "before final claim processing."
-            )
-
-
-        else:
-
-            st.success(
-                "Recommended action: Continue normal "
-                "claim review while maintaining standard "
-                "evidence verification."
-            )
-
+        with probability_cols[2]:
+            st.metric("Low", f"{low_prob:.2f}%")
+            st.progress(min(max(low_prob / 100, 0.0), 1.0))
 
         st.caption(
-            "A risk classification does not establish "
-            "fraud. Final claim decisions require "
-            "professional investigation and evidence review."
+            "AI insights are preliminary and do not prove fraud or criminal activity. "
+            "Final decisions belong to authorized professionals."
         )
 
+        # ----------------------------------------------------
+        # Recommended action
+        # ----------------------------------------------------
+        if risk_lower == "high":
+            st.warning(
+                "Recommended action: Prioritise the claim for further "
+                "forensic and investigative review."
+            )
+        elif risk_lower == "medium":
+            st.info(
+                "Recommended action: Perform additional document and "
+                "evidence verification before final claim processing."
+            )
+        else:
+            st.success(
+                "Recommended action: Continue normal claim review while "
+                "maintaining standard evidence verification."
+            )
 
+        # ----------------------------------------------------
+        # Feature importance
+        # ----------------------------------------------------
         st.divider()
-
-
-        # ====================================================
-        # PROBABILITY BREAKDOWN
-        # ====================================================
-
-        st.subheader(
-            "Risk Probability Breakdown"
-        )
-
-
-        probabilities = (
-            st.session_state.last_probabilities
-        )
-
-
-        probability_cols = st.columns(
-            len(probabilities)
-        )
-
-
-        for column, (
-            class_name,
-            probability
-        ) in zip(
-            probability_cols,
-            probabilities.items()
-        ):
-
-            with column:
-
-                st.metric(
-                    class_name.title(),
-                    f"{probability:.2f}%"
-                )
-
-
-                st.progress(
-                    min(
-                        max(
-                            probability / 100,
-                            0.0
-                        ),
-                        1.0
-                    )
-                )
-
-
-        st.divider()
-
-
-        # ====================================================
-        # FEATURE IMPORTANCE
-        # ====================================================
-
-        st.subheader(
-            "Model Feature Importance"
-        )
-
+        st.subheader("Model Feature Importance")
 
         try:
-
             importance_df = pd.DataFrame(
-                {
-                    "Feature":
-                        features,
-
-                    "Importance":
-                        model.feature_importances_
-                }
+                {"Feature": features, "Importance": model.feature_importances_}
             )
-
-
-            importance_df = (
-                importance_df.sort_values(
-                    "Importance",
-                    ascending=False
-                )
+            importance_df = importance_df.sort_values(
+                "Importance", ascending=False
             )
-
-
-            importance_df[
-                "Importance (%)"
-            ] = (
-                importance_df[
-                    "Importance"
-                ] * 100
+            importance_df["Importance (%)"] = (
+                importance_df["Importance"] * 100
             ).round(2)
-
-
             st.dataframe(
-                importance_df[
-                    [
-                        "Feature",
-                        "Importance (%)"
-                    ]
-                ],
+                importance_df[["Feature", "Importance (%)"]],
                 use_container_width=True,
                 hide_index=True
             )
-
-
         except Exception:
+            st.info("Feature importance is not available for this model.")
 
-            st.info(
-                "Feature importance is not available "
-                "for this model."
-            )
-
-
-        st.divider()
-
-
-        # ====================================================
-        # DOCUMENT RESULT
-        # ====================================================
-
+        # ----------------------------------------------------
+        # Document result
+        # ----------------------------------------------------
         if st.session_state.document_analysis:
-
-            st.subheader(
-                "Document Intelligence Summary"
-            )
-
-
-            doc_result = (
-                st.session_state.document_analysis
-            )
-
-
+            st.divider()
+            st.subheader("Document Intelligence Summary")
+            doc_result = st.session_state.document_analysis
             d1, d2, d3 = st.columns(3)
 
-
             with d1:
-
                 st.metric(
                     "Amount Check",
-                    "Passed"
-                    if doc_result[
-                        "amount_consistent"
-                    ]
-                    else "Needs Review"
+                    "Passed" if doc_result["amount_consistent"] else "Needs Review"
                 )
-
-
             with d2:
-
                 st.metric(
                     "Date Check",
-                    "Found"
-                    if doc_result[
-                        "date_found"
-                    ]
-                    else "Not Found"
+                    "Found" if doc_result["date_found"] else "Not Found"
                 )
-
-
             with d3:
-
                 st.metric(
                     "Supporting Evidence",
-                    "Detected"
-                    if doc_result[
-                        "evidence_found"
-                    ]
-                    else "Limited"
+                    "Detected" if doc_result["evidence_found"] else "Limited"
                 )
 
-
         st.divider()
-
-
         st.info(
-            "Forensic interpretation: this output is a "
-            "preliminary AI-assisted risk assessment. "
-            "It should support, not replace, professional "
-            "claim investigation and evidence review."
+            "Forensic interpretation: this output is a preliminary AI-assisted "
+            "risk assessment. It should support, not replace, professional claim "
+            "investigation and evidence review."
         )
 
 
@@ -1981,9 +2122,11 @@ elif st.session_state.page == "Claim Status":
             st.session_state.last_confidence
         )
 
+        risk_score = st.session_state.last_risk_score
 
-        status_col1, status_col2, status_col3 = (
-            st.columns(3)
+
+        status_col1, status_col2, status_col3, status_col4 = (
+            st.columns(4)
         )
 
 
@@ -2004,6 +2147,14 @@ elif st.session_state.page == "Claim Status":
 
 
         with status_col3:
+
+            st.metric(
+                "Risk Score",
+                f"{risk_score}/100" if risk_score is not None else "—"
+            )
+
+
+        with status_col4:
 
             st.metric(
                 "Model",
@@ -2038,6 +2189,14 @@ elif st.session_state.page == "Claim Status":
             st.success(
                 "Current status: Preliminary low-risk "
                 "classification."
+            )
+
+
+        if risk_score is not None:
+            st.info(
+                f"Preliminary risk score: {risk_score}/100. "
+                "This presentation score is derived from the model probability "
+                "distribution and is not the same as model confidence."
             )
 
 
