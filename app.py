@@ -1014,7 +1014,7 @@ elif st.session_state.page == "Claim Assessment":
 
         policyholder_name = st.text_input(
             "Policyholder name",
-            placeholder="Enter policyholder name"
+            placeholder="Enter Policyholder name"
         )
 
         incident_location = st.text_input(
