@@ -2,11 +2,15 @@ import streamlit as st
 import joblib
 import pandas as pd
 import os
+import re
+
+from pypdf import PdfReader
+from docx import Document
 
 
 # ============================================================
 # INSURIX | INSURANCE RISK INTELLIGENCE
-# VERSION 4 - RANDOM FOREST
+# VERSION 4 - RANDOM FOREST + DOCUMENT INTELLIGENCE
 # ============================================================
 
 st.set_page_config(
@@ -24,23 +28,432 @@ st.set_page_config(
 MODEL_FILE = "insurance_risk_model_v4.pkl"
 
 if not os.path.exists(MODEL_FILE):
+
     st.error(
         "Version 4 model file was not found. "
-        "Please make sure insurance_risk_model_v4.pkl is in the repository."
+        "Please make sure insurance_risk_model_v4.pkl "
+        "is in the repository."
     )
+
     st.stop()
 
+
 try:
+
     model_package = joblib.load(MODEL_FILE)
 
     model = model_package["model"]
     label_encoder = model_package["label_encoder"]
     features = model_package["features"]
 
+
 except Exception as e:
-    st.error("Unable to load the Version 4 Random Forest model.")
+
+    st.error(
+        "Unable to load the Version 4 Random Forest model."
+    )
+
     st.code(str(e))
+
     st.stop()
+
+
+# ============================================================
+# DOCUMENT TEXT EXTRACTION
+# ============================================================
+
+def extract_text_from_document(uploaded_file):
+
+    file_name = uploaded_file.name.lower()
+
+    try:
+
+        # ----------------------------------------------------
+        # PDF
+        # ----------------------------------------------------
+
+        if file_name.endswith(".pdf"):
+
+            reader = PdfReader(uploaded_file)
+
+            text = ""
+
+            for page in reader.pages:
+
+                page_text = page.extract_text()
+
+                if page_text:
+
+                    text += page_text + "\n"
+
+            return text
+
+
+        # ----------------------------------------------------
+        # DOCX
+        # ----------------------------------------------------
+
+        elif file_name.endswith(".docx"):
+
+            document = Document(uploaded_file)
+
+            text = "\n".join(
+                paragraph.text
+                for paragraph in document.paragraphs
+            )
+
+            return text
+
+
+        # ----------------------------------------------------
+        # TXT
+        # ----------------------------------------------------
+
+        elif file_name.endswith(".txt"):
+
+            return uploaded_file.read().decode(
+                "utf-8",
+                errors="ignore"
+            )
+
+
+        else:
+
+            return ""
+
+
+    except Exception as e:
+
+        return f"DOCUMENT_ERROR: {str(e)}"
+
+
+# ============================================================
+# DOCUMENT ANALYSIS
+# ============================================================
+
+def analyse_claim_document(
+    document_text,
+    claim_amount,
+    incident_date
+):
+
+    text = document_text.lower()
+
+    findings = []
+
+    # ========================================================
+    # CLAIM AMOUNT CHECK
+    # ========================================================
+
+    amount_patterns = [
+        r'₹\s?[\d,]+(?:\.\d+)?',
+        r'rs\.?\s?[\d,]+(?:\.\d+)?',
+        r'inr\s?[\d,]+(?:\.\d+)?'
+    ]
+
+    document_amounts = []
+
+    for pattern in amount_patterns:
+
+        matches = re.findall(
+            pattern,
+            text,
+            flags=re.IGNORECASE
+        )
+
+        for match in matches:
+
+            number = re.sub(
+                r'[^\d.]',
+                '',
+                match
+            )
+
+            if number:
+
+                try:
+
+                    document_amounts.append(
+                        float(number)
+                    )
+
+                except:
+
+                    pass
+
+
+    if document_amounts:
+
+        closest_amount = min(
+            document_amounts,
+            key=lambda x: abs(x - claim_amount)
+        )
+
+        difference = abs(
+            closest_amount - claim_amount
+        )
+
+        if claim_amount > 0:
+
+            difference_percentage = (
+                difference / claim_amount
+            ) * 100
+
+        else:
+
+            difference_percentage = 0
+
+
+        if difference_percentage <= 10:
+
+            findings.append(
+                f"Claim amount appears consistent "
+                f"with document amount "
+                f"(₹{closest_amount:,.0f})."
+            )
+
+            amount_consistent = True
+
+        else:
+
+            findings.append(
+                f"Possible claim amount mismatch detected. "
+                f"Entered: ₹{claim_amount:,.0f}, "
+                f"document: ₹{closest_amount:,.0f}."
+            )
+
+            amount_consistent = False
+
+
+    else:
+
+        findings.append(
+            "No clear claim amount was extracted "
+            "from the document."
+        )
+
+        amount_consistent = False
+
+
+    # ========================================================
+    # INCIDENT DATE CHECK
+    # ========================================================
+
+    date_formats = [
+
+        incident_date.strftime("%d-%m-%Y"),
+
+        incident_date.strftime("%d/%m/%Y"),
+
+        incident_date.strftime("%d.%m.%Y"),
+
+        incident_date.strftime("%Y-%m-%d")
+
+    ]
+
+
+    date_found = False
+
+    for date_format in date_formats:
+
+        if date_format.lower() in text:
+
+            date_found = True
+
+            break
+
+
+    if date_found:
+
+        findings.append(
+            "Incident date appears in the document."
+        )
+
+    else:
+
+        findings.append(
+            "Incident date was not clearly found "
+            "in the document."
+        )
+
+
+    # ========================================================
+    # POLICE / FIR CHECK
+    # ========================================================
+
+    police_keywords = [
+
+        "fir",
+
+        "police report",
+
+        "police complaint",
+
+        "first information report",
+
+        "crime number",
+
+        "case number"
+
+    ]
+
+
+    police_found = any(
+        keyword in text
+        for keyword in police_keywords
+    )
+
+
+    if police_found:
+
+        findings.append(
+            "Police/FIR-related evidence detected."
+        )
+
+    else:
+
+        findings.append(
+            "No clear police/FIR reference detected."
+        )
+
+
+    # ========================================================
+    # INVOICE / REPAIR CHECK
+    # ========================================================
+
+    invoice_keywords = [
+
+        "invoice",
+
+        "repair bill",
+
+        "garage bill",
+
+        "repair estimate",
+
+        "estimate",
+
+        "quotation",
+
+        "work order"
+
+    ]
+
+
+    invoice_found = any(
+        keyword in text
+        for keyword in invoice_keywords
+    )
+
+
+    if invoice_found:
+
+        findings.append(
+            "Repair/invoice-related evidence detected."
+        )
+
+    else:
+
+        findings.append(
+            "No clear repair invoice or estimate detected."
+        )
+
+
+    # ========================================================
+    # SUPPORTING EVIDENCE CHECK
+    # ========================================================
+
+    evidence_keywords = [
+
+        "photograph",
+
+        "photographs",
+
+        "photo",
+
+        "evidence",
+
+        "inspection",
+
+        "surveyor",
+
+        "inspection report",
+
+        "damage assessment"
+
+    ]
+
+
+    evidence_found = any(
+        keyword in text
+        for keyword in evidence_keywords
+    )
+
+
+    if evidence_found:
+
+        findings.append(
+            "Supporting evidence references detected."
+        )
+
+    else:
+
+        findings.append(
+            "Limited supporting evidence references detected."
+        )
+
+
+    # ========================================================
+    # DOCUMENT CONSISTENCY
+    # ========================================================
+
+    consistency_score = 1
+
+    if not amount_consistent:
+
+        consistency_score = 0
+
+
+    # ========================================================
+    # EVIDENCE STATUS
+    # ========================================================
+
+    evidence_score = 1 if evidence_found else 0
+
+
+    # ========================================================
+    # RETURN ANALYSIS
+    # ========================================================
+
+    return {
+
+        "findings": findings,
+
+        "document_consistency":
+            consistency_score,
+
+        "evidence_status":
+            evidence_score,
+
+        "document_amounts":
+            document_amounts,
+
+        "police_found":
+            police_found,
+
+        "invoice_found":
+            invoice_found,
+
+        "evidence_found":
+            evidence_found,
+
+        "amount_consistent":
+            amount_consistent,
+
+        "date_found":
+            date_found
+
+    }
 
 
 # ============================================================
@@ -48,36 +461,47 @@ except Exception as e:
 # ============================================================
 
 if "page" not in st.session_state:
+
     st.session_state.page = "Overview"
 
+
 if "last_risk" not in st.session_state:
+
     st.session_state.last_risk = None
 
+
 if "last_confidence" not in st.session_state:
+
     st.session_state.last_confidence = None
 
+
 if "last_probabilities" not in st.session_state:
+
     st.session_state.last_probabilities = None
 
+
 if "assessment_done" not in st.session_state:
+
     st.session_state.assessment_done = False
 
 
+if "document_analysis" not in st.session_state:
+
+    st.session_state.document_analysis = None
+
+
 # ============================================================
-# SIMPLE PROFESSIONAL CSS
-# No HTML UI blocks are used.
+# PROFESSIONAL CSS
 # ============================================================
 
 st.markdown(
     """
     <style>
 
-    /* Main page */
     .stApp {
         background-color: #f7f9fc;
     }
 
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: #07152f;
     }
@@ -86,7 +510,6 @@ st.markdown(
         color: white;
     }
 
-    /* Main headings */
     h1 {
         font-size: 42px !important;
         font-weight: 800 !important;
@@ -104,7 +527,6 @@ st.markdown(
         font-weight: 700 !important;
     }
 
-    /* Buttons */
     .stButton > button {
         background-color: #159bd7;
         color: white;
@@ -121,14 +543,12 @@ st.markdown(
         border: none;
     }
 
-    /* Inputs */
     .stTextInput input,
     .stNumberInput input,
     .stTextArea textarea {
         border-radius: 8px;
     }
 
-    /* Cards */
     div[data-testid="stMetric"] {
         background-color: white;
         border: 1px solid #e4eaf2;
@@ -136,12 +556,10 @@ st.markdown(
         padding: 18px;
     }
 
-    /* Info boxes */
     div[data-testid="stAlert"] {
         border-radius: 10px;
     }
 
-    /* Horizontal line */
     hr {
         border-color: #e3e8ef;
     }
@@ -194,7 +612,13 @@ with st.sidebar:
 
     st.success("System operational")
 
-    st.caption("Version 4 • Random Forest")
+    st.caption(
+        "Version 4 • Random Forest"
+    )
+
+    st.caption(
+        "Document Intelligence enabled"
+    )
 
     st.divider()
 
@@ -220,28 +644,42 @@ if st.session_state.page == "Overview":
 
     st.divider()
 
-    # Hero section
+
+    # --------------------------------------------------------
+    # HERO
+    # --------------------------------------------------------
+
     hero_left, hero_right = st.columns([2.2, 1])
+
 
     with hero_left:
 
         st.info("FORENSIC × INSURANCE")
 
-        st.header("Make the evidence work harder.")
+        st.header(
+            "Make the evidence work harder."
+        )
 
         st.write(
-            "Capture the claim. Understand the risk. "
+            "Capture the claim. Analyse supporting "
+            "documents. Understand the risk. "
             "Move forward with confidence."
         )
 
         st.write("")
 
+
         if st.button(
             "Start Claim Assessment →",
             key="overview_assessment"
         ):
-            st.session_state.page = "Claim Assessment"
+
+            st.session_state.page = (
+                "Claim Assessment"
+            )
+
             st.rerun()
+
 
     with hero_right:
 
@@ -255,65 +693,109 @@ if st.session_state.page == "Overview":
             "Random Forest"
         )
 
+        st.metric(
+            "DOCUMENT ANALYSIS",
+            "Enabled"
+        )
+
+
     st.divider()
+
+
+    # --------------------------------------------------------
+    # PLATFORM
+    # --------------------------------------------------------
 
     st.subheader("Platform")
 
     col1, col2, col3 = st.columns(3)
 
+
     with col1:
 
-        st.markdown("### 🔍 Claim Assessment")
+        st.markdown(
+            "### 🔍 Claim Assessment"
+        )
 
         st.write(
-            "Evaluate claim indicators using the "
-            "Version 4 Random Forest model."
+            "Evaluate claim indicators using "
+            "the Version 4 Random Forest model."
         )
+
 
         if st.button(
             "Open Assessment →",
             key="overview_claim"
         ):
-            st.session_state.page = "Claim Assessment"
+
+            st.session_state.page = (
+                "Claim Assessment"
+            )
+
             st.rerun()
+
 
     with col2:
 
-        st.markdown("### 📄 Documents")
+        st.markdown(
+            "### 📄 Document Intelligence"
+        )
 
         st.write(
-            "Organise supporting documents and "
-            "forensic evidence for future review."
+            "Extract information from supporting "
+            "PDF, DOCX and TXT claim documents."
         )
+
 
         if st.button(
             "Open Documents →",
             key="overview_documents"
         ):
-            st.session_state.page = "Documents"
+
+            st.session_state.page = (
+                "Documents"
+            )
+
             st.rerun()
+
 
     with col3:
 
-        st.markdown("### 📊 Claim Status")
+        st.markdown(
+            "### 📊 Claim Status"
+        )
 
         st.write(
             "Review the most recent assessment "
             "generated during this session."
         )
 
+
         if st.button(
             "View Status →",
             key="overview_status"
         ):
-            st.session_state.page = "Claim Status"
+
+            st.session_state.page = (
+                "Claim Status"
+            )
+
             st.rerun()
+
 
     st.divider()
 
-    st.subheader("How Insurix Works")
+
+    # --------------------------------------------------------
+    # HOW INSURIX WORKS
+    # --------------------------------------------------------
+
+    st.subheader(
+        "How Insurix Works"
+    )
 
     step1, step2, step3 = st.columns(3)
+
 
     with step1:
 
@@ -322,8 +804,10 @@ if st.session_state.page == "Overview":
         st.markdown("**Capture**")
 
         st.write(
-            "Enter the available claim indicators."
+            "Enter the available claim "
+            "information and risk indicators."
         )
+
 
     with step2:
 
@@ -332,9 +816,11 @@ if st.session_state.page == "Overview":
         st.markdown("**Analyse**")
 
         st.write(
-            "The Version 4 Random Forest model "
-            "evaluates the claim."
+            "Extract information from claim "
+            "documents and perform preliminary "
+            "consistency checks."
         )
+
 
     with step3:
 
@@ -343,14 +829,18 @@ if st.session_state.page == "Overview":
         st.markdown("**Assess**")
 
         st.write(
-            "Receive a preliminary Low, Medium "
+            "The Version 4 Random Forest model "
+            "provides a preliminary Low, Medium "
             "or High risk classification."
         )
 
+
     st.divider()
 
+
     st.caption(
-        "INSURIX • AI-Powered Forensic Insurance Risk Assessment • Version 4"
+        "INSURIX • AI-Powered Forensic "
+        "Insurance Risk Assessment • Version 4"
     )
 
 
@@ -360,23 +850,30 @@ if st.session_state.page == "Overview":
 
 elif st.session_state.page == "Claim Assessment":
 
-    st.caption("PUBLIC PORTAL / CLAIM ASSESSMENT")
+    st.caption(
+        "PUBLIC PORTAL / CLAIM ASSESSMENT"
+    )
 
     st.title("Claim Assessment")
 
     st.write(
-        "Build a consistent evidence record before review."
+        "Build a consistent evidence record "
+        "before review."
     )
 
     st.divider()
 
-    # --------------------------------------------------------
-    # CLAIM IDENTITY
-    # --------------------------------------------------------
 
-    st.subheader("01  •  Claim identity")
+    # ========================================================
+    # CLAIM IDENTITY
+    # ========================================================
+
+    st.subheader(
+        "01  •  Claim identity"
+    )
 
     identity_col1, identity_col2 = st.columns(2)
+
 
     with identity_col1:
 
@@ -399,6 +896,7 @@ elif st.session_state.page == "Claim Assessment":
             placeholder="Briefly describe the incident"
         )
 
+
     with identity_col2:
 
         claim_id = st.text_input(
@@ -420,15 +918,20 @@ elif st.session_state.page == "Claim Assessment":
             step=1
         )
 
+
     st.divider()
 
-    # --------------------------------------------------------
-    # EVIDENCE AVAILABILITY
-    # --------------------------------------------------------
 
-    st.subheader("02  •  Evidence availability")
+    # ========================================================
+    # EVIDENCE AVAILABILITY
+    # ========================================================
+
+    st.subheader(
+        "02  •  Evidence availability"
+    )
 
     evidence_col1, evidence_col2 = st.columns(2)
+
 
     with evidence_col1:
 
@@ -454,6 +957,7 @@ elif st.session_state.page == "Claim Assessment":
             step=1
         )
 
+
     with evidence_col2:
 
         photos_available = st.selectbox(
@@ -473,45 +977,256 @@ elif st.session_state.page == "Claim Assessment":
             step=1
         )
 
-        document_consistency_text = st.selectbox(
-            "Document consistency",
-            ["Yes", "No"]
-        )
 
     st.divider()
 
-    # --------------------------------------------------------
-    # ADDITIONAL MODEL INDICATORS
-    # --------------------------------------------------------
 
-    st.subheader("03  •  Forensic risk indicators")
+    # ========================================================
+    # DOCUMENT INTELLIGENCE
+    # ========================================================
+
+    st.subheader(
+        "03  •  Document intelligence"
+    )
+
+    st.write(
+        "Upload a claim-related PDF, DOCX or TXT "
+        "document. Insurix will extract readable text "
+        "and perform preliminary consistency checks."
+    )
+
+
+    claim_document = st.file_uploader(
+        "Upload claim document",
+        type=[
+            "pdf",
+            "docx",
+            "txt"
+        ],
+        key="claim_document"
+    )
+
+
+    document_analysis = None
+
+
+    if claim_document:
+
+        st.success(
+            f"Document uploaded: "
+            f"{claim_document.name}"
+        )
+
+
+        extracted_text = (
+            extract_text_from_document(
+                claim_document
+            )
+        )
+
+
+        if extracted_text.startswith(
+            "DOCUMENT_ERROR"
+        ):
+
+            st.error(
+                "The document could not be analysed."
+            )
+
+            st.code(extracted_text)
+
+
+        elif not extracted_text.strip():
+
+            st.warning(
+                "No readable text was extracted "
+                "from this document. This may be "
+                "a scanned/image-only document."
+            )
+
+
+        else:
+
+            document_analysis = (
+                analyse_claim_document(
+                    extracted_text,
+                    estimated_amount,
+                    incident_date
+                )
+            )
+
+
+            # Save document analysis
+            st.session_state.document_analysis = (
+                document_analysis
+            )
+
+
+            st.markdown(
+                "### Document Analysis"
+            )
+
+
+            for finding in (
+                document_analysis["findings"]
+            ):
+
+                finding_lower = finding.lower()
+
+
+                if "mismatch" in finding_lower:
+
+                    st.warning(
+                        "⚠️ " + finding
+                    )
+
+
+                elif (
+                    "not clearly" in finding_lower
+                    or "not detected" in finding_lower
+                    or "limited" in finding_lower
+                ):
+
+                    st.warning(
+                        "⚠️ " + finding
+                    )
+
+
+                else:
+
+                    st.success(
+                        "✓ " + finding
+                    )
+
+
+            st.write("")
+
+
+            doc_col1, doc_col2 = st.columns(2)
+
+
+            with doc_col1:
+
+                if (
+                    document_analysis[
+                        "document_consistency"
+                    ] == 1
+                ):
+
+                    st.metric(
+                        "Document Consistency",
+                        "Consistent"
+                    )
+
+                else:
+
+                    st.metric(
+                        "Document Consistency",
+                        "Needs Review"
+                    )
+
+
+            with doc_col2:
+
+                if (
+                    document_analysis[
+                        "evidence_status"
+                    ] == 1
+                ):
+
+                    st.metric(
+                        "Evidence Status",
+                        "Evidence Detected"
+                    )
+
+                else:
+
+                    st.metric(
+                        "Evidence Status",
+                        "Limited Evidence"
+                    )
+
+
+            with st.expander(
+                "View extracted document text"
+            ):
+
+                st.text(
+                    extracted_text[:10000]
+                )
+
+
+    st.divider()
+
+
+    # ========================================================
+    # FORENSIC RISK INDICATORS
+    # ========================================================
+
+    st.subheader(
+        "04  •  Forensic risk indicators"
+    )
+
 
     model_col1, model_col2 = st.columns(2)
 
+
     with model_col1:
+
+        document_consistency_text = st.selectbox(
+            "Document consistency",
+            ["Yes", "No"],
+            key="manual_document_consistency"
+        )
+
+
+    with model_col2:
 
         evidence_status_text = st.selectbox(
             "Evidence status",
-            ["Yes", "No"]
+            ["Yes", "No"],
+            key="manual_evidence_status"
         )
 
-    with model_col2:
+
+    model_col3, model_col4 = st.columns(2)
+
+
+    with model_col3:
 
         claim_after_policy_text = st.selectbox(
             "Claim after policy",
             ["No", "Yes"]
         )
 
+
+    with model_col4:
+
+        st.info(
+            "If a document is uploaded, "
+            "document analysis will automatically "
+            "provide the evidence and consistency "
+            "values used by the model."
+        )
+
+
+    st.divider()
+
+
     st.info(
-        "The Version 4 Random Forest model evaluates seven "
-        "claim-related features."
+        "Version 4 evaluates seven model features: "
+        "claim amount, previous claims, rejected claims, "
+        "claim frequency, evidence status, document "
+        "consistency and claim after policy."
     )
+
 
     st.write("")
 
-    # --------------------------------------------------------
+
+    # ========================================================
     # RUN ASSESSMENT
-    # --------------------------------------------------------
+    # ========================================================
 
     run_assessment = st.button(
         "Run Assessment  →",
@@ -519,82 +1234,185 @@ elif st.session_state.page == "Claim Assessment":
         use_container_width=False
     )
 
+
     if run_assessment:
 
-        # Convert Yes / No to 1 / 0
-        evidence_status = 1 if evidence_status_text == "Yes" else 0
+        # ----------------------------------------------------
+        # MANUAL VALUES
+        # ----------------------------------------------------
 
-        document_consistency = (
-            1 if document_consistency_text == "Yes" else 0
+        manual_evidence_status = (
+            1
+            if evidence_status_text == "Yes"
+            else 0
         )
+
+
+        manual_document_consistency = (
+            1
+            if document_consistency_text == "Yes"
+            else 0
+        )
+
 
         claim_after_policy = (
-            1 if claim_after_policy_text == "Yes" else 0
+            1
+            if claim_after_policy_text == "Yes"
+            else 0
         )
 
+
         # ----------------------------------------------------
-        # CREATE MODEL INPUT IN EXACT V4 FEATURE ORDER
+        # DOCUMENT-AWARE VALUES
+        # ----------------------------------------------------
+
+        if document_analysis is not None:
+
+            evidence_status = (
+                document_analysis[
+                    "evidence_status"
+                ]
+            )
+
+
+            document_consistency = (
+                document_analysis[
+                    "document_consistency"
+                ]
+            )
+
+
+            st.info(
+                "The model is using the document-analysis "
+                "results for Evidence Status and "
+                "Document Consistency."
+            )
+
+
+        else:
+
+            evidence_status = (
+                manual_evidence_status
+            )
+
+
+            document_consistency = (
+                manual_document_consistency
+            )
+
+
+            st.info(
+                "No readable claim document was supplied. "
+                "The model is using the manually entered "
+                "Evidence Status and Document Consistency."
+            )
+
+
+        # ----------------------------------------------------
+        # CREATE MODEL INPUT
         # ----------------------------------------------------
 
         input_data = {
-            "claim_amount": estimated_amount,
-            "previous_claims": previous_claims,
-            "rejected_claims": rejected_claims,
-            "claim_frequency": claim_frequency,
-            "evidence_status": evidence_status,
-            "document_consistency": document_consistency,
-            "claim_after_policy": claim_after_policy
+
+            "claim_amount":
+                estimated_amount,
+
+            "previous_claims":
+                previous_claims,
+
+            "rejected_claims":
+                rejected_claims,
+
+            "claim_frequency":
+                claim_frequency,
+
+            "evidence_status":
+                evidence_status,
+
+            "document_consistency":
+                document_consistency,
+
+            "claim_after_policy":
+                claim_after_policy
+
         }
+
 
         input_df = pd.DataFrame(
             [input_data],
             columns=features
         )
 
+
+        # ====================================================
+        # RANDOM FOREST PREDICTION
+        # ====================================================
+
         try:
 
-            # ------------------------------------------------
-            # VERSION 4 RANDOM FOREST PREDICTION
-            # ------------------------------------------------
-
-            prediction = model.predict(input_df)
-
-            prediction_label = label_encoder.inverse_transform(
-                prediction
-            )[0]
-
-            probabilities = model.predict_proba(
+            prediction = model.predict(
                 input_df
-            )[0]
+            )
 
-            class_names = label_encoder.classes_
+
+            prediction_label = (
+                label_encoder.inverse_transform(
+                    prediction
+                )[0]
+            )
+
+
+            probabilities = (
+                model.predict_proba(
+                    input_df
+                )[0]
+            )
+
+
+            class_names = (
+                label_encoder.classes_
+            )
+
 
             probability_dict = {}
+
 
             for class_name, probability in zip(
                 class_names,
                 probabilities
             ):
+
                 probability_dict[class_name] = (
                     float(probability) * 100
                 )
 
-            confidence = max(probability_dict.values())
 
-            # Save result
+            confidence = max(
+                probability_dict.values()
+            )
+
+
+            # ------------------------------------------------
+            # SAVE RESULT
+            # ------------------------------------------------
+
             st.session_state.last_risk = str(
                 prediction_label
             )
 
-            st.session_state.last_confidence = float(
-                confidence
+
+            st.session_state.last_confidence = (
+                float(confidence)
             )
+
 
             st.session_state.last_probabilities = (
                 probability_dict
             )
 
+
             st.session_state.assessment_done = True
+
 
         except Exception as e:
 
@@ -604,20 +1422,33 @@ elif st.session_state.page == "Claim Assessment":
 
             st.code(str(e))
 
-    # --------------------------------------------------------
+
+    # ========================================================
     # RESULT
-    # --------------------------------------------------------
+    # ========================================================
 
     if st.session_state.assessment_done:
 
         st.divider()
 
-        st.subheader("Assessment Result")
+        st.subheader(
+            "Assessment Result"
+        )
 
-        risk = st.session_state.last_risk
-        confidence = st.session_state.last_confidence
 
-        result_col1, result_col2, result_col3 = st.columns(3)
+        risk = (
+            st.session_state.last_risk
+        )
+
+        confidence = (
+            st.session_state.last_confidence
+        )
+
+
+        result_col1, result_col2, result_col3 = (
+            st.columns(3)
+        )
+
 
         with result_col1:
 
@@ -626,12 +1457,14 @@ elif st.session_state.page == "Claim Assessment":
                 risk
             )
 
+
         with result_col2:
 
             st.metric(
                 "Confidence",
                 f"{confidence:.2f}%"
             )
+
 
         with result_col3:
 
@@ -640,48 +1473,112 @@ elif st.session_state.page == "Claim Assessment":
                 "V4 Random Forest"
             )
 
-        # Risk message
+
+        # ----------------------------------------------------
+        # RISK MESSAGE
+        # ----------------------------------------------------
+
         risk_lower = risk.lower()
+
 
         if risk_lower == "high":
 
             st.error(
                 "High-risk classification. "
-                "Further forensic or investigative review "
-                "may be appropriate."
+                "Further forensic or investigative "
+                "review may be appropriate."
             )
+
 
         elif risk_lower == "medium":
 
             st.warning(
                 "Medium-risk classification. "
-                "Additional verification may be considered."
+                "Additional verification may "
+                "be considered."
             )
+
 
         else:
 
             st.success(
-                "Low-risk classification based on the "
-                "entered indicators."
+                "Low-risk classification based "
+                "on the entered indicators."
             )
+
 
         st.divider()
 
-        # ----------------------------------------------------
-        # PROBABILITY BREAKDOWN
-        # ----------------------------------------------------
 
-        st.subheader("Risk Probability Breakdown")
+        # ====================================================
+        # RECOMMENDATION
+        # ====================================================
+
+        st.subheader(
+            "Recommended Action"
+        )
+
+
+        if risk_lower == "high":
+
+            st.warning(
+                "Recommended action: Prioritise the "
+                "claim for further forensic and "
+                "investigative review."
+            )
+
+
+        elif risk_lower == "medium":
+
+            st.info(
+                "Recommended action: Perform additional "
+                "document and evidence verification "
+                "before final claim processing."
+            )
+
+
+        else:
+
+            st.success(
+                "Recommended action: Continue normal "
+                "claim review while maintaining standard "
+                "evidence verification."
+            )
+
+
+        st.caption(
+            "A risk classification does not establish "
+            "fraud. Final claim decisions require "
+            "professional investigation and evidence review."
+        )
+
+
+        st.divider()
+
+
+        # ====================================================
+        # PROBABILITY BREAKDOWN
+        # ====================================================
+
+        st.subheader(
+            "Risk Probability Breakdown"
+        )
+
 
         probabilities = (
             st.session_state.last_probabilities
         )
 
+
         probability_cols = st.columns(
             len(probabilities)
         )
 
-        for column, (class_name, probability) in zip(
+
+        for column, (
+            class_name,
+            probability
+        ) in zip(
             probability_cols,
             probabilities.items()
         ):
@@ -693,46 +1590,71 @@ elif st.session_state.page == "Claim Assessment":
                     f"{probability:.2f}%"
                 )
 
+
                 st.progress(
                     min(
-                        max(probability / 100, 0.0),
+                        max(
+                            probability / 100,
+                            0.0
+                        ),
                         1.0
                     )
                 )
 
+
         st.divider()
 
-        # ----------------------------------------------------
-        # FEATURE IMPORTANCE
-        # ----------------------------------------------------
 
-        st.subheader("Model Feature Importance")
+        # ====================================================
+        # FEATURE IMPORTANCE
+        # ====================================================
+
+        st.subheader(
+            "Model Feature Importance"
+        )
+
 
         try:
 
             importance_df = pd.DataFrame(
                 {
-                    "Feature": features,
-                    "Importance": model.feature_importances_
+                    "Feature":
+                        features,
+
+                    "Importance":
+                        model.feature_importances_
                 }
             )
 
-            importance_df = importance_df.sort_values(
-                "Importance",
-                ascending=False
+
+            importance_df = (
+                importance_df.sort_values(
+                    "Importance",
+                    ascending=False
+                )
             )
 
-            importance_df["Importance (%)"] = (
-                importance_df["Importance"] * 100
+
+            importance_df[
+                "Importance (%)"
+            ] = (
+                importance_df[
+                    "Importance"
+                ] * 100
             ).round(2)
+
 
             st.dataframe(
                 importance_df[
-                    ["Feature", "Importance (%)"]
+                    [
+                        "Feature",
+                        "Importance (%)"
+                    ]
                 ],
                 use_container_width=True,
                 hide_index=True
             )
+
 
         except Exception:
 
@@ -741,7 +1663,67 @@ elif st.session_state.page == "Claim Assessment":
                 "for this model."
             )
 
+
         st.divider()
+
+
+        # ====================================================
+        # DOCUMENT RESULT
+        # ====================================================
+
+        if st.session_state.document_analysis:
+
+            st.subheader(
+                "Document Intelligence Summary"
+            )
+
+
+            doc_result = (
+                st.session_state.document_analysis
+            )
+
+
+            d1, d2, d3 = st.columns(3)
+
+
+            with d1:
+
+                st.metric(
+                    "Amount Check",
+                    "Passed"
+                    if doc_result[
+                        "amount_consistent"
+                    ]
+                    else "Needs Review"
+                )
+
+
+            with d2:
+
+                st.metric(
+                    "Date Check",
+                    "Found"
+                    if doc_result[
+                        "date_found"
+                    ]
+                    else "Not Found"
+                )
+
+
+            with d3:
+
+                st.metric(
+                    "Supporting Evidence",
+                    "Detected"
+                    if doc_result[
+                        "evidence_found"
+                    ]
+                    else "Limited"
+                )
+
+
+        st.divider()
+
 
         st.info(
             "Forensic interpretation: this output is a "
@@ -757,61 +1739,49 @@ elif st.session_state.page == "Claim Assessment":
 
 elif st.session_state.page == "Documents":
 
-    st.caption("PUBLIC PORTAL / DOCUMENTS")
+    st.caption(
+        "PUBLIC PORTAL / DOCUMENTS"
+    )
 
     st.title("Documents")
 
     st.write(
-        "Supporting documents can be linked to each "
-        "claim assessment."
+        "Upload and review claim-related documents "
+        "for preliminary document intelligence."
     )
 
     st.divider()
 
-    doc_col1, doc_col2 = st.columns(2)
 
-    with doc_col1:
+    # ========================================================
+    # DOCUMENT UPLOAD
+    # ========================================================
 
-        st.subheader("01  •  Claim Documentation")
+    st.subheader(
+        "01  •  Claim Documentation"
+    )
 
-        st.write(
-            "Upload documents associated with the insurance claim."
-        )
 
-        uploaded_files = st.file_uploader(
-            "Upload documents",
-            accept_multiple_files=True,
-            type=[
-                "pdf",
-                "png",
-                "jpg",
-                "jpeg",
-                "docx",
-                "xlsx",
-                "csv"
-            ]
-        )
+    uploaded_files = st.file_uploader(
+        "Upload claim documents",
+        accept_multiple_files=True,
+        type=[
+            "pdf",
+            "docx",
+            "txt"
+        ],
+        key="documents_page_upload"
+    )
 
-    with doc_col2:
-
-        st.subheader("02  •  Forensic Evidence")
-
-        st.write(
-            "Evidence files can be organised for future "
-            "forensic analysis and review."
-        )
-
-        st.info(
-            "Future versions can integrate OCR, metadata "
-            "analysis, consistency checking and automated "
-            "evidence extraction."
-        )
 
     if uploaded_files:
 
         st.divider()
 
-        st.subheader("Uploaded Documents")
+        st.subheader(
+            "Uploaded Documents"
+        )
+
 
         for file in uploaded_files:
 
@@ -820,15 +1790,99 @@ elif st.session_state.page == "Documents":
                 f"{file.size / 1024:.1f} KB"
             )
 
+
         st.success(
             f"{len(uploaded_files)} document(s) selected."
         )
 
+
+        st.divider()
+
+
+        st.subheader(
+            "Document Review"
+        )
+
+
+        for file in uploaded_files:
+
+            with st.expander(
+                f"Analyse {file.name}"
+            ):
+
+                extracted_text = (
+                    extract_text_from_document(
+                        file
+                    )
+                )
+
+
+                if extracted_text.startswith(
+                    "DOCUMENT_ERROR"
+                ):
+
+                    st.error(
+                        "Unable to read this document."
+                    )
+
+                    st.code(
+                        extracted_text
+                    )
+
+
+                elif not extracted_text.strip():
+
+                    st.warning(
+                        "No readable text was extracted. "
+                        "This may be a scanned image."
+                    )
+
+
+                else:
+
+                    st.success(
+                        "Readable text extracted successfully."
+                    )
+
+
+                    st.write(
+                        f"Characters extracted: "
+                        f"{len(extracted_text):,}"
+                    )
+
+
+                    with st.expander(
+                        "View extracted text"
+                    ):
+
+                        st.text(
+                            extracted_text[:10000]
+                        )
+
+
+    else:
+
+        st.info(
+            "No documents uploaded yet."
+        )
+
+
     st.divider()
 
-    st.subheader("Planned Evidence Workflow")
 
-    workflow1, workflow2, workflow3 = st.columns(3)
+    # ========================================================
+    # WORKFLOW
+    # ========================================================
+
+    st.subheader(
+        "Document Intelligence Workflow"
+    )
+
+
+    workflow1, workflow2, workflow3 = (
+        st.columns(3)
+    )
+
 
     with workflow1:
 
@@ -837,19 +1891,22 @@ elif st.session_state.page == "Documents":
         st.markdown("**Upload**")
 
         st.write(
-            "Collect claim-related supporting files."
+            "Collect claim-related PDF, DOCX "
+            "or TXT documents."
         )
+
 
     with workflow2:
 
         st.markdown("### 02")
 
-        st.markdown("**Review**")
+        st.markdown("**Extract**")
 
         st.write(
-            "Review documents for consistency and "
-            "available forensic evidence."
+            "Extract readable text and identify "
+            "important claim information."
         )
+
 
     with workflow3:
 
@@ -858,9 +1915,20 @@ elif st.session_state.page == "Documents":
         st.markdown("**Analyse**")
 
         st.write(
-            "Future AI modules can assist with "
-            "document and evidence analysis."
+            "Check preliminary consistency and "
+            "supporting evidence indicators."
         )
+
+
+    st.divider()
+
+
+    st.info(
+        "Current document intelligence supports "
+        "text-based PDF, DOCX and TXT files. "
+        "OCR for scanned/image-only documents "
+        "can be added as a future module."
+    )
 
 
 # ============================================================
@@ -869,121 +1937,139 @@ elif st.session_state.page == "Documents":
 
 elif st.session_state.page == "Claim Status":
 
-    st.caption("PUBLIC PORTAL / CLAIM STATUS")
+    st.caption(
+        "PUBLIC PORTAL / CLAIM STATUS"
+    )
 
     st.title("Claim Status")
 
     st.write(
-        "Review the latest preliminary risk assessment "
-        "generated in this session."
+        "Review the latest preliminary risk "
+        "assessment generated during this session."
     )
 
     st.divider()
 
+
     if not st.session_state.assessment_done:
 
         st.info(
-            "No claim assessment has been completed yet."
+            "No claim assessment has been completed "
+            "in this session yet."
         )
 
+
         if st.button(
-            "Go to Claim Assessment →",
-            key="status_assessment"
+            "Start Claim Assessment →",
+            key="status_start"
         ):
 
-            st.session_state.page = "Claim Assessment"
+            st.session_state.page = (
+                "Claim Assessment"
+            )
+
             st.rerun()
+
 
     else:
 
-        status_col1, status_col2, status_col3 = st.columns(3)
+        risk = (
+            st.session_state.last_risk
+        )
+
+        confidence = (
+            st.session_state.last_confidence
+        )
+
+
+        status_col1, status_col2, status_col3 = (
+            st.columns(3)
+        )
+
 
         with status_col1:
 
             st.metric(
                 "Risk Level",
-                st.session_state.last_risk
+                risk
             )
+
 
         with status_col2:
 
             st.metric(
                 "Confidence",
-                f"{st.session_state.last_confidence:.2f}%"
+                f"{confidence:.2f}%"
             )
+
 
         with status_col3:
 
             st.metric(
-                "Status",
-                "Assessed"
+                "Model",
+                "V4 Random Forest"
             )
+
 
         st.divider()
 
-        risk = st.session_state.last_risk.lower()
 
-        if risk == "high":
+        risk_lower = risk.lower()
+
+
+        if risk_lower == "high":
 
             st.error(
-                "Current classification: HIGH RISK"
+                "Current status: Further investigation "
+                "recommended."
             )
 
-        elif risk == "medium":
+
+        elif risk_lower == "medium":
 
             st.warning(
-                "Current classification: MEDIUM RISK"
+                "Current status: Additional verification "
+                "recommended."
             )
+
 
         else:
 
             st.success(
-                "Current classification: LOW RISK"
+                "Current status: Preliminary low-risk "
+                "classification."
             )
 
-        st.subheader("Risk Probability")
+
+        st.divider()
+
+
+        st.subheader(
+            "Assessment Summary"
+        )
+
 
         probabilities = (
             st.session_state.last_probabilities
         )
 
-        for class_name, probability in probabilities.items():
+
+        for class_name, probability in (
+            probabilities.items()
+        ):
 
             st.write(
-                f"**{class_name.title()}** — "
+                f"**{class_name.title()} Risk:** "
                 f"{probability:.2f}%"
             )
 
-            st.progress(
-                min(
-                    max(probability / 100, 0.0),
-                    1.0
-                )
-            )
 
         st.divider()
 
+
         st.info(
-            "This status represents the latest preliminary "
-            "AI-assisted assessment in the current session."
+            "This status represents a preliminary "
+            "AI-assisted risk classification and "
+            "does not constitute a final claim decision "
+            "or a finding of fraud."
         )
-
-        if st.button(
-            "Run New Assessment →",
-            key="new_assessment"
-        ):
-
-            st.session_state.page = "Claim Assessment"
-            st.rerun()
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.divider()
-
-st.caption(
-    "INSURIX • AI-Powered Forensic Insurance Risk Assessment "
-    "• Version 4 • Random Forest Classification"
-)
